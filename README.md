@@ -8,11 +8,13 @@ By: Luke Boyle, Casper Casey, and Emma Power
 ## Architecture
 Server:
 - AWS
+
 Framework:
 - React Frontend
 - Node Backend
 - Rest API
 - Map API either google or OpenStreetMaps
+
 Database:
 - Considering Postgres, second prototype decision
 
