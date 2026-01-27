@@ -1,0 +1,2 @@
+## 2026-01-27: 
+Initial project plans discussed. Plan is to create an inclusive website for LGBTQIA2+ events and spaces around Ottawa. We intend to use a React app, AWS for hosting, and OpenStreetMaps.
