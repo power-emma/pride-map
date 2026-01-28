@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
+import MapComponent from './MapComponent';
 import './App.css'
 
 function App() {
@@ -10,14 +11,15 @@ function App() {
     <>
 
       <h1>PrideMap!</h1>
-      <div className="card">
+        <MapComponent />
+        <br/>
         <button onClick={() => setCount((count) => count + 1)}>
-        Sample Button has been clicked {count} times
+          Sample Button has been clicked {count} times
         </button>
         <p>
-          This main file is stored in <code>client/pridemap/src/App.tsx</code>
+          
         </p>
-      </div>
+      
       <div>
 
       </div>
