@@ -5,29 +5,23 @@ import MapComponent from './MapComponent';
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+	const [count, setCount] = useState(0)
 
-  return (
-    <>
+	return (
+		<>
 
-      <h1>PrideMap!</h1>
-        <MapComponent />
-        <br/>
-        <button onClick={() => setCount((count) => count + 1)}>
-          Sample Button has been clicked {count} times
-        </button>
-        <p>
-          
-        </p>
-      
-      <div>
+			<h1>PrideMap!</h1>
+			<MapComponent />
+			<br />
+			<button onClick={() => setCount((count) => count + 1)}>
+				Sample Button has been clicked {count} times
+			</button>
 
-      </div>
-      <p className="read-the-docs">
-        Website is under construction!
-      </p>
-    </>
-  )
+			<p className="read-the-docs">
+				Website is under construction!
+			</p>
+		</>
+	)
 }
 
 export default App

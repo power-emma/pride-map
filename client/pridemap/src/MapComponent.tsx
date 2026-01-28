@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 're
 import 'leaflet/dist/leaflet.css'; // Make sure the CSS is imported
 import UserMarkerComponent from './UserMarkerComponent';
 import MarkerComponent from './MarkerComponent';
+import MarkerContainer from './MarkerContainer';
 
 const MapComponent = () => {
     const defaultCenter = [45.42060673930713, -75.68282689676013]; // uOttawa Train Station
@@ -22,10 +23,9 @@ const MapComponent = () => {
             />
 
             {/* Leaflet Maps Pin format */}
-            <MarkerComponent name="uOttawa Train Station" position={defaultCenter} />
-
-            <UserMarkerComponent />
-
+            <MarkerContainer> 
+                
+            </MarkerContainer>
         </MapContainer>
     );
 };
