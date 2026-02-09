@@ -2,6 +2,7 @@ import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import MapComponent from './MapComponent';
+import Header from './components/Header';
 import './App.css'
 import CardDeck from './CardDeck';
 
@@ -10,7 +11,7 @@ function App() {
 
 	return (
 		<>
-
+			<Header></Header>
 			<h1>PrideMap!</h1>
 			<MapComponent />
 			<CardDeck title={'Off-Map Services!'} /> 
