@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css'; // Make sure the CSS is imported
-import UserMarkerComponent from './UserMarkerComponent';
-import MarkerComponent from './MarkerComponent';
+
 import MarkerContainer from './MarkerContainer';
 
 const MapComponent = () => {

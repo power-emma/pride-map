@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CircleMarker, Marker, Popup, useMap } from "react-leaflet";
 
 const UserMarkerComponent = () => {
@@ -20,7 +20,6 @@ const UserMarkerComponent = () => {
 			<CircleMarker
 
 				center={userPosition}
-				radius={10} 
 				color="white" 
 				fillColor="#4169E1"
 				fillOpacity={1} 
