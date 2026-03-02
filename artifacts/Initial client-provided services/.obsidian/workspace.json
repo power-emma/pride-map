@@ -1,0 +1,199 @@
+{
+  "main": {
+    "id": "08d9a20bedebec28",
+    "type": "split",
+    "children": [
+      {
+        "id": "2a45033a20c1b0ee",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "971ca7124a5b72e4",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "e728599f60c93dec",
+    "type": "split",
+    "children": [
+      {
+        "id": "8bbb51ead76926f0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d1e98a6eb60e7a13",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": true
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "bc4b894abb138b79",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "83f33e3fb5d961dd",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6e524598dd9df9eb",
+    "type": "split",
+    "children": [
+      {
+        "id": "a9ae1748d21abd30",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f99387b69611161b",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Untitled.canvas",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Untitled"
+            }
+          },
+          {
+            "id": "51188f399ea66096",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Untitled.canvas",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Untitled"
+            }
+          },
+          {
+            "id": "a6c93d632221306c",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "e6d34c0e7d6738f8",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Untitled.canvas",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Untitled"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "bases:Create new base": false,
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false
+    }
+  },
+  "active": "971ca7124a5b72e4",
+  "lastOpenFiles": [
+    "Queer Ottawa Map/Welcome.md",
+    "Youth Services Bureau.md",
+    "Wisdom 2 action.md",
+    "Welcome.md",
+    "Venus Envy.md",
+    "University of Ottawa's Community Legal Clinic.md",
+    "University of Ottawa Pride Centre.md",
+    "University of Carleton Gender and Sexuality Resource Centre.md",
+    "Trans Resources.md",
+    "Trans Outaouais.md",
+    "Trans Library of Ottawa.md",
+    "Trans Health Ottawa.md",
+    "Tone Cluster Queer Choir.md",
+    "The Gay Zone.md",
+    "Ten Oaks Project.md",
+    "T's All Welcoming Pub.md",
+    "Swizzles.md",
+    "Student Resources.md",
+    "Stroked Ego.md",
+    "Sports and Activity Groups.md",
+    "Rideau Speedos.md",
+    "Refugee and Immigrant Resources.md",
+    "Rainbow Rockers Curling Club.md",
+    "Rainbow Refugee.md",
+    "Queer Nightlife.md",
+    "Queer Momentum.md",
+    "New folder",
+    "Untitled.canvas"
+  ]
+}
