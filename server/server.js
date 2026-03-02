@@ -8,9 +8,11 @@ app.get('/', (req, res) => {
 });
 
 const pinsRoute = require('./routes/pins');
+const cardsRoute = require('./routes/cards');
 
 
 app.use('/pins', pinsRoute);
+app.use('/cards', cardsRoute);
 
 const port = process.env.PORT || 3001;
 

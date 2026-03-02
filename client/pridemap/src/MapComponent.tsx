@@ -1,9 +1,25 @@
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css'; // Make sure the CSS is imported
+import { useEffect } from 'react';
 
 import MarkerContainer from './MarkerContainer';
 
-const MapComponent = () => {
+// Component to handle map updates
+const MapUpdater = ({ selectedLocation }: { selectedLocation: {lat: number, lng: number, name: string} | null }) => {
+    const map = useMap();
+
+    useEffect(() => {
+        if (selectedLocation) {
+            map.flyTo([selectedLocation.lat, selectedLocation.lng], 16, {
+                duration: 1.5
+            });
+        }
+    }, [selectedLocation, map]);
+
+    return null;
+};
+
+const MapComponent = ({ selectedLocation }: { selectedLocation?: {lat: number, lng: number, name: string} | null }) => {
     const defaultCenter = [45.42060673930713, -75.68282689676013]; // uOttawa Train Station
 
     
@@ -21,9 +37,11 @@ const MapComponent = () => {
             />
 
             {/* Leaflet Maps Pin format */}
-            <MarkerContainer> 
+            <MarkerContainer selectedLocation={selectedLocation || undefined}> 
                 
             </MarkerContainer>
+            
+            <MapUpdater selectedLocation={selectedLocation || null} />
         </MapContainer>
     );
 };
