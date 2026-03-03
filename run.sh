@@ -22,8 +22,8 @@ CLIENT_PID=$!
 sleep 2
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✓ Server running (PID: $SERVER_PID)"
-echo "✓ Client running (PID: $CLIENT_PID)"
+echo "Server running (PID: $SERVER_PID)"
+echo "Client running (PID: $CLIENT_PID)"
 echo ""
 echo "Press ENTER to stop both processes..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -52,7 +52,7 @@ cleanup() {
     pkill -f "vite.*pridemap" 2>/dev/null
     sleep 1
     
-    echo "✓ All processes stopped"
+    echo "All processes stopped"
 }
 
 # Call cleanup
