@@ -5,7 +5,6 @@ import './App.css'
 import CardDeck from './CardDeck';
 
 function App() {
-	const [count, setCount] = useState(0)
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
 	const mapRef = useRef<HTMLDivElement>(null);
 
@@ -18,19 +17,11 @@ function App() {
 	return (
 		<>
 			<Header></Header>
-			<h1>PrideMap!</h1>
 			<div ref={mapRef}>
 				<MapComponent selectedLocation={selectedLocation} />
 			</div>
 			<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} /> 
 			<br />
-			<button onClick={() => setCount((count) => count + 1)}>
-				Sample Button has been clicked {count} times
-			</button>
-
-			<p className="read-the-docs">
-				Website is under construction!
-			</p>
 		</>
 	)
 }
