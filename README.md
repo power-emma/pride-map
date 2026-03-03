@@ -1,24 +1,23 @@
-# PrideMap!
+# PrideMap! - Now Hosting on http://3.135.26.170/
 
-By: Luke Boyle, Casper Casey, and Emma Power
+By: Luke Boyle and Emma Power
 
 ## Objectives
 - Create an interactive map that displays LGBTQ+ services in Ottawa
 
 ## Architecture
 Server:
-- AWS
-
-Framework:
-- React Frontend
+- AWS EC2 Instance
 - Node Backend
 - Rest API
-- Map API either google or OpenStreetMaps
+  
+Client:
+- React Frontend
+- Leaflet and Open Street Maps for the mapping serive
+- Connects to rest API via nginx proxy at /api
 
 Database:
-- Considering Postgres, second prototype decision
-
-## Risks/Issues
-
+- Postgres - Work in Progress
+  
 ## Initial Release Plans
-- First Prototype: Static Map
+- Now hosting initial map with client data
