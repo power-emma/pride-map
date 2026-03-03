@@ -32,3 +32,4 @@ Database:
   
 ## Initial Release Plans
 - Now hosting initial map with client data
+- Next significant release will include CRUD using an SQL database
