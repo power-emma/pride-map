@@ -60,6 +60,17 @@ build_client() {
     tail -n 30 "$LOG_DIR/client-build.log"
     return 1
   }
+
+
+  # Recursive Nginx Execution perms
+  echo "Ensuring nginx can traverse the path to dist/..."
+  local dir="$CLIENT_DIST"
+  while [[ "$dir" != "/" ]]; do
+    chmod o+x "$dir" 2>/dev/null || true
+    dir="$(dirname "$dir")"
+  done
+  # Make dist/ files world-readable
+  chmod -R o+rX "$CLIENT_DIST" 2>/dev/null || true
 }
 
 build_client || true
@@ -123,8 +134,13 @@ server {
     location / {
         root  $CLIENT_DIST;
         index index.html;
-        # SPA fallback: any unknown path serves index.html so React Router works
-        try_files \$uri \$uri/ /index.html;
+        # SPA fallback: unknown paths serve index.html so React Router works.
+        # Use a named location (@fallback) to avoid an internal redirect loop.
+        try_files \$uri \$uri/ @fallback;
+    }
+    location @fallback {
+        root  $CLIENT_DIST;
+        try_files /index.html =404;
     }
 }
 NGINXCONF
@@ -176,6 +192,7 @@ user $current_user;
 pid $nginx_pid_file;
 events { worker_connections 1024; }
 http {
+    types_hash_max_size 2048;
     ${mime_include}
     default_type application/octet-stream;
     sendfile on;
