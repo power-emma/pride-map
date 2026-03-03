@@ -1,36 +1,33 @@
 import { useEffect, useState } from "react";
-import { CircleMarker, Marker, Popup, useMap } from "react-leaflet";
+import { CircleMarker, Popup, useMap } from "react-leaflet";
+import type { LatLngExpression } from "leaflet";
 
 const UserMarkerComponent = () => {
 	const map = useMap();
-	const [userPosition, setUserPosition] = useState([0, 0])
+	const [userPosition, setUserPosition] = useState<LatLngExpression | null>(null);
 
-	//Null useEffect only runs on page load
 	useEffect(() => {
 		map.locate({
 			enableHighAccuracy: true,
 		}).on("locationfound", function (e) {
-			setUserPosition([e.latitude, e.longitude]);
+			setUserPosition([e.latlng.lat, e.latlng.lng]);
 		});
-	}, []);
+	}, [map]);
+
+	if (!userPosition) return null;
 
 	return (
-		<div>
-			
-			<CircleMarker
-
-				center={userPosition}
-				color="white" 
-				fillColor="#4169E1"
-				fillOpacity={1} 
-				weight={2} 
-
-
-			> <Popup>
-					You are here!
-				</Popup>
-			</CircleMarker>
-		</div>
+		<CircleMarker
+			center={userPosition}
+			pathOptions={{
+				color: "white",
+				fillColor: "#4169E1",
+				fillOpacity: 1,
+				weight: 2,
+			}}
+		>
+			<Popup>You are here!</Popup>
+		</CircleMarker>
 	);
 }
 

@@ -1,5 +1,6 @@
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css'; // Make sure the CSS is imported
+import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import type { LatLngExpression } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { useEffect } from 'react';
 
 import MarkerContainer from './MarkerContainer';
@@ -20,7 +21,7 @@ const MapUpdater = ({ selectedLocation }: { selectedLocation: {lat: number, lng:
 };
 
 const MapComponent = ({ selectedLocation }: { selectedLocation?: {lat: number, lng: number, name: string} | null }) => {
-    const defaultCenter = [45.42060673930713, -75.68282689676013]; // uOttawa Train Station
+    const defaultCenter: LatLngExpression = [45.42060673930713, -75.68282689676013]; // uOttawa
 
     
 

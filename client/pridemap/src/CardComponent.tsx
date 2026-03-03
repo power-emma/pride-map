@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import type { MouseEvent } from 'react';
 
 const CardComponent = ({ 
     title, 
@@ -20,7 +20,7 @@ const CardComponent = ({
 
     const hasLocation = latitude !== null && longitude !== null;
 
-    const handleSeeOnMap = (e: React.MouseEvent) => {
+    const handleSeeOnMap = (e: MouseEvent) => {
         e.preventDefault();
         if (hasLocation && latitude && longitude && onLocationSelect) {
             onLocationSelect(latitude, longitude, title);

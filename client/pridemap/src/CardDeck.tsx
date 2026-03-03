@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import CardComponent from './CardComponent';
 
 interface Card {
@@ -14,7 +14,7 @@ const CardDeck = ({title, onLocationSelect}: {title: string, onLocationSelect?: 
     const [cards, setCards] = useState<Card[]>([]);
 
     useEffect(() => {
-        fetch('http://localhost:3001/cards')
+        fetch('/api/cards')
             .then(response => response.json())
             .then(json => {
                 setCards(json);
