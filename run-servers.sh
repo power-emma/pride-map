@@ -51,6 +51,37 @@ echo "Checking and installing dependencies if needed..."
 run_npm_install_if_needed "$SERVER_DIR" server || true
 run_npm_install_if_needed "$CLIENT_DIR" client || true
 
+
+kill_orphans() {
+  echo "Killing any stale processes from a previous run..."
+
+
+  # Kill whatever is currently listening on our ports which is in theory the old servers
+  for port in "$SERVER_PORT" "$NGINX_PORT"; do
+    local pids=""
+    if command -v fuser >/dev/null 2>&1; then
+      pids=$(fuser "${port}/tcp" 2>/dev/null || true)
+    elif command -v ss >/dev/null 2>&1; then
+      pids=$(ss -tlnp "sport = :${port}" 2>/dev/null \
+        | grep -oP '(?<=pid=)\d+' || true)
+    elif command -v lsof >/dev/null 2>&1; then
+      pids=$(lsof -ti "TCP:${port}" -sTCP:LISTEN 2>/dev/null || true)
+    fi
+    for pid in $pids; do
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "  Killing PID $pid holding port $port..."
+        kill "$pid" 2>/dev/null || sudo kill "$pid" 2>/dev/null || true
+        sleep 1
+        kill -0 "$pid" 2>/dev/null && { kill -9 "$pid" 2>/dev/null || sudo kill -9 "$pid" 2>/dev/null || true; }
+      fi
+    done
+  done
+
+  echo "Done cleaning up old processes."
+}
+
+kill_orphans
+
 build_client() {
   echo "Building React app (npm run build)..."
   (cd "$CLIENT_DIR" && npm run build) > "$LOG_DIR/client-build.log" 2>&1 && {
