@@ -96,8 +96,8 @@ setup_nginx() {
 #
 # Traffic flow:
 #   Browser → nginx :${NGINX_PORT}
-#     /api/*  → Node/Express  :${SERVER_PORT}  (strips /api prefix)
-#     /*      → static files from $CLIENT_DIST
+#     /api/* → Node/Express  :${SERVER_PORT}  (strips /api prefix)
+#     /*     → static files from $CLIENT_DIST
 
 server {
     listen ${NGINX_PORT};
@@ -107,8 +107,11 @@ server {
     error_log  $LOG_DIR/nginx-error.log;
 
     # --- API proxy (Node/Express) ---
-    location /api/ {
-        proxy_pass         http://127.0.0.1:${SERVER_PORT}/;
+    # Match both /api and /api/* so clients don't get a 301 redirect
+    location ~ ^/api(/.*)?$ {
+        # Rewrite /api → / and /api/foo → /foo before proxying
+        rewrite ^/api(/.*)?$ \$1/ break;
+        proxy_pass         http://127.0.0.1:${SERVER_PORT};
         proxy_http_version 1.1;
         proxy_set_header   Host              \$host;
         proxy_set_header   X-Real-IP         \$remote_addr;
@@ -128,24 +131,21 @@ NGINXCONF
 
   echo "nginx config written to: $NGINX_CONF"
 
-  # Validate the config
-  if ! nginx -t -c "$NGINX_CONF" 2>/dev/null; then
-    # nginx -t needs a full config; use include approach via a temp wrapper
-    local tmp_conf
-    tmp_conf="$(mktemp /tmp/nginx-test-XXXXXX.conf)"
-    cat > "$tmp_conf" <<WRAPPER
+  # Validate the config via a temporary wrapper (nginx -t requires a full config)
+  local tmp_conf
+  tmp_conf="$(mktemp /tmp/nginx-test-XXXXXX.conf)"
+  cat > "$tmp_conf" <<WRAPPER
 events {}
 http {
     include $NGINX_CONF;
 }
 WRAPPER
-    if ! nginx -t -c "$tmp_conf" 2>&1 | tee -a "$LOG_DIR/nginx-error.log"; then
-      echo "nginx config validation failed — check $LOG_DIR/nginx-error.log"
-      rm -f "$tmp_conf"
-      return 1
-    fi
+  if ! nginx -t -c "$tmp_conf" 2>&1 | tee -a "$LOG_DIR/nginx-error.log"; then
+    echo "nginx config validation failed — check $LOG_DIR/nginx-error.log"
     rm -f "$tmp_conf"
+    return 1
   fi
+  rm -f "$tmp_conf"
 
   # Stop any existing nginx process using our config, then start fresh
   stop_nginx || true
@@ -156,15 +156,29 @@ WRAPPER
     nginx_cmd="sudo nginx"
   fi
 
-  # Build a minimal wrapper config so nginx can run without needing /etc/nginx/nginx.conf
+  # Build a minimal wrapper config so nginx can run without needing /etc/nginx/nginx.conf.
+  # Run as the current user so the worker can read files in the home directory.
+  local current_user
+  current_user="$(id -un)"
   local run_conf
   run_conf="$(mktemp /tmp/nginx-run-XXXXXX.conf)"
-  # Determine a safe pid file path
   local nginx_pid_file="$LOG_DIR/nginx.pid"
+  # Include the system mime.types if available so nginx can set Content-Type correctly
+  local mime_include=""
+  for f in /etc/nginx/mime.types /usr/local/etc/nginx/mime.types; do
+    if [[ -f "$f" ]]; then
+      mime_include="include $f;"
+      break
+    fi
+  done
   cat > "$run_conf" <<WRAPPER
+user $current_user;
 pid $nginx_pid_file;
 events { worker_connections 1024; }
 http {
+    ${mime_include}
+    default_type application/octet-stream;
+    sendfile on;
     include $NGINX_CONF;
 }
 WRAPPER
