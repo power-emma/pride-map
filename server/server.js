@@ -14,9 +14,13 @@ const cardsRoute = require('./routes/cards');
 app.use('/pins', pinsRoute);
 app.use('/cards', cardsRoute);
 
-const port = process.env.PORT || 3001;
+// Only start the server when this file is run directly, not when imported in tests
+if (require.main === module) {
+    const port = process.env.PORT || 3001;
+    app.listen(port, () => {
+        console.log(`Server is running on port ${port}`);
+    });
+}
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+module.exports = app;
 

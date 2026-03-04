@@ -1,0 +1,16 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/admin/pride-map
+hooks:
+# Install:
+  AfterInstall:
+    - location: run-server.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: run-server.sh
+      timeout: 300
+      runas: root
+# ValidateService:
