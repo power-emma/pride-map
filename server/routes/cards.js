@@ -1,37 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
-
-// Load locations from JSON file
-const locationsPath = path.join(__dirname, '../queer_ottawa_locations.json');
-let allLocations = [];
-
-try {
-    const data = fs.readFileSync(locationsPath, 'utf8');
-    allLocations = JSON.parse(data);
-} catch (error) {
-    console.error('Error loading locations:', error);
-}
+const pool = require('../db'); // Ensure this is your database connection
 
 // Get all locations for cards (doesn't require coordinates)
-router.get('/', (req, res) => {
-    const cards = allLocations.map(location => ({
-        name: location.name,
-        description: location.description,
-        address: location.address,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        url: location.url
-    }));
-    res.json(cards);
-});
-
-// Get only locations with valid coordinates
-router.get('/with-location', (req, res) => {
-    const cards = allLocations
-        .filter(location => location.latitude !== null && location.longitude !== null)
-        .map(location => ({
+router.get('/', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT name, description, address, latitude, longitude, url FROM locations');
+        const cards = result.rows.map(location => ({
             name: location.name,
             description: location.description,
             address: location.address,
@@ -39,7 +14,30 @@ router.get('/with-location', (req, res) => {
             longitude: location.longitude,
             url: location.url
         }));
-    res.json(cards);
+        res.json(cards);
+    } catch (error) {
+        console.error('Error fetching locations:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Get only locations with valid coordinates
+router.get('/with-location', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT name, description, address, latitude, longitude, url FROM locations WHERE latitude IS NOT NULL AND longitude IS NOT NULL');
+        const cards = result.rows.map(location => ({
+            name: location.name,
+            description: location.description,
+            address: location.address,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            url: location.url
+        }));
+        res.json(cards);
+    } catch (error) {
+        console.error('Error fetching locations with coordinates:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 // export the router module so that server.js file can use it
