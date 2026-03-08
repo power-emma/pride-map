@@ -1,27 +1,21 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
+const pool = require('../db');
 
-// Load locations from JSON file
-const locationsPath = path.join(__dirname, '../queer_ottawa_locations.json');
-let allLocations = [];
-
-try {
-    const data = fs.readFileSync(locationsPath, 'utf8');
-    allLocations = JSON.parse(data);
-} catch (error) {
-    console.error('Error loading locations:', error);
-}
-
-// Filter locations that have valid coordinates and convert to pin format
-const getValidPins = () => {
-    return allLocations
-        .filter(location => location.latitude !== null && location.longitude !== null)
-        .map(location => ({
+// Query locations from the database and convert to pin format
+const getValidPins = async () => {
+    try {
+        const result = await pool.query(
+            'SELECT name, latitude, longitude FROM locations WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
+        );
+        return result.rows.map(location => ({
             name: location.name,
             position: [location.latitude, location.longitude]
         }));
+    } catch (error) {
+        console.error('Error fetching locations from database:', error);
+        return [];
+    }
 };
 
 // Define a route
@@ -30,8 +24,8 @@ router.get('/', (req, res) => {
 });
 
 // Define a route
-router.get('/all', (req, res) => {
-    const pins = getValidPins();
+router.get('/all', async (req, res) => {
+    const pins = await getValidPins();
     res.json(pins);
 });
 
