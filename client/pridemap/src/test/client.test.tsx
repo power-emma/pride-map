@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 // ─── Leaflet / react-leaflet mocks ───────────────────────────────────────────
 // Leaflet needs a browser canvas that jsdom doesn't provide, so we mock the
@@ -38,23 +39,29 @@ import CardComponent from '../CardComponent';
 import CardDeck from '../CardDeck';
 import MarkerComponent from '../MarkerComponent';
 import App from '../App';
+import CreateLocationPage from '../CreateLocationPage';
+
+function renderWithRouter(ui: React.ReactElement, initialEntries: string[] = ['/']) {
+    return render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+}
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 describe('Header', () => {
     it('renders the app title', () => {
-        render(<Header />);
+        renderWithRouter(<Header />);
         expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
     });
 
     it('renders the logo image with alt text', () => {
-        render(<Header />);
+        renderWithRouter(<Header />);
         const logo = screen.getByAltText('Pride Map Logo');
         expect(logo).toBeInTheDocument();
     });
 
-    it('renders the Menu button', () => {
-        render(<Header />);
-        expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument();
+    it('renders navigation links', () => {
+        renderWithRouter(<Header />);
+        expect(screen.getByRole('link', { name: /home/i })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /add location/i })).toBeInTheDocument();
     });
 });
 
@@ -208,17 +215,79 @@ describe('App', () => {
     });
 
     it('renders the Header', async () => {
-        render(<App />);
+        renderWithRouter(<App />);
         expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
     });
 
     it('renders the map container', async () => {
-        render(<App />);
+        renderWithRouter(<App />);
         expect(screen.getByTestId('map-container')).toBeInTheDocument();
     });
 
     it('renders the off-map services section title', async () => {
-        render(<App />);
+        renderWithRouter(<App />);
         expect(screen.getByText('Off-Map Services!')).toBeInTheDocument();
+    });
+});
+
+// ─── CreateLocationPage ───────────────────────────────────────────────────────
+describe('CreateLocationPage', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('loads categories and submits a new location payload', async () => {
+        const user = userEvent.setup();
+
+        const fetchMock = vi.fn()
+            // categories
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve([{ id: 1, name: 'Healthcare Resources' }]),
+            })
+            // create location
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 201,
+                json: () => Promise.resolve({ id: 123 }),
+            });
+
+        vi.stubGlobal('fetch', fetchMock);
+
+        renderWithRouter(<CreateLocationPage />, ['/create-location']);
+
+        // Wait for category option to appear
+        await waitFor(() => expect(screen.getByRole('option', { name: 'Healthcare Resources' })).toBeInTheDocument());
+
+        await user.type(screen.getByLabelText(/name/i), 'Test Location');
+        await user.selectOptions(screen.getByLabelText(/category/i), '1');
+        await user.type(screen.getByLabelText(/latitude/i), '45.4');
+        await user.type(screen.getByLabelText(/longitude/i), '-75.7');
+        await user.type(screen.getByLabelText(/website url/i), 'https://example.com');
+
+        await user.click(screen.getByRole('button', { name: /create location/i }));
+
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenNthCalledWith(
+                2,
+                '/api/locations',
+                expect.objectContaining({
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                })
+            );
+        });
+
+        const body = (fetchMock.mock.calls[1]?.[1] as any)?.body;
+        expect(JSON.parse(body)).toEqual({
+            name: 'Test Location',
+            description: null,
+            address: null,
+            latitude: 45.4,
+            longitude: -75.7,
+            url: 'https://example.com',
+            id_category: 1,
+        });
     });
 });

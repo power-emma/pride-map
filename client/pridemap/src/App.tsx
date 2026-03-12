@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react'
+import { Routes, Route } from 'react-router-dom'
 import MapComponent from './MapComponent';
 import Header from './components/Header';
 import './App.css'
 import CardDeck from './CardDeck';
+import CreateLocationPage from './CreateLocationPage.tsx';
 
 function App() {
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
@@ -16,12 +18,22 @@ function App() {
 
 	return (
 		<>
-			<Header></Header>
-			<div ref={mapRef}>
-				<MapComponent selectedLocation={selectedLocation} />
-			</div>
-			<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} /> 
-			<br />
+			<Header />
+			<Routes>
+				<Route
+					path="/"
+					element={
+						<>
+							<div ref={mapRef}>
+								<MapComponent selectedLocation={selectedLocation} />
+							</div>
+							<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} />
+							<br />
+						</>
+					}
+				/>
+				<Route path="/create-location" element={<CreateLocationPage />} />
+			</Routes>
 		</>
 	)
 }

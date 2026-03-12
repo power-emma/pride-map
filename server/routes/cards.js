@@ -5,7 +5,7 @@ const pool = require('../db'); // Ensure this is your database connection
 // Get all locations for cards (doesn't require coordinates)
 router.get('/', async (req, res) => {
     try {
-        const result = await pool.query('SELECT name, description, address, latitude, longitude, url FROM locations');
+        const result = await pool.query('SELECT name, description, address, latitude::float8 AS latitude, longitude::float8 AS longitude, url FROM locations');
         const cards = result.rows.map(location => ({
             name: location.name,
             description: location.description,
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 // Get only locations with valid coordinates
 router.get('/with-location', async (req, res) => {
     try {
-        const result = await pool.query('SELECT name, description, address, latitude, longitude, url FROM locations WHERE latitude IS NOT NULL AND longitude IS NOT NULL');
+        const result = await pool.query('SELECT name, description, address, latitude::float8 AS latitude, longitude::float8 AS longitude, url FROM locations WHERE latitude IS NOT NULL AND longitude IS NOT NULL');
         const cards = result.rows.map(location => ({
             name: location.name,
             description: location.description,

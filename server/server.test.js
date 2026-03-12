@@ -1,5 +1,10 @@
 const request = require('supertest');
 const app = require('./server');
+const pool = require('./db');
+
+afterAll(async () => {
+    await pool.end();
+});
 
 describe('GET /', () => {
     it('should return 200 and the live message', async () => {

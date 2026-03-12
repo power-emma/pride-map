@@ -6,7 +6,7 @@ const pool = require('../db');
 const getValidPins = async () => {
     try {
         const result = await pool.query(
-            'SELECT name, latitude, longitude FROM locations WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
+            'SELECT name, latitude::float8 AS latitude, longitude::float8 AS longitude FROM locations WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
         );
         return result.rows.map(location => ({
             name: location.name,
