@@ -1,4 +1,38 @@
 const request = require('supertest');
+
+const mockRows = [
+    {
+        name: 'Community Hub',
+        description: 'Support services',
+        address: '123 Main St',
+        latitude: 45.4215,
+        longitude: -75.6972,
+        url: 'https://example.com/hub'
+    },
+    {
+        name: 'No Coordinates Resource',
+        description: 'Phone support',
+        address: '456 Side St',
+        latitude: null,
+        longitude: null,
+        url: 'https://example.com/phone'
+    }
+];
+
+jest.mock('pg', () => ({
+    Pool: jest.fn(() => ({
+        query: jest.fn((sql) => {
+            if (sql.includes('WHERE latitude IS NOT NULL AND longitude IS NOT NULL')) {
+                return Promise.resolve({
+                    rows: mockRows.filter((row) => row.latitude !== null && row.longitude !== null)
+                });
+            }
+
+            return Promise.resolve({ rows: mockRows });
+        })
+    }))
+}));
+
 const app = require('./server');
 
 describe('GET /', () => {
