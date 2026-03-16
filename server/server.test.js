@@ -1,4 +1,23 @@
 const request = require('supertest');
+
+// Replace ../db with a fake pool before any route module loads it
+const mockLocations = [
+    { name: 'AIDS Committee of Ottawa', description: 'HIV/AIDS support services.', address: '19 Main St, Ottawa, ON K1S 1A9', latitude: 45.4145, longitude: -75.6810, url: 'https://www.aco-cso.ca/' },
+    { name: 'Bruce House',              description: 'Housing support for those with HIV.', address: '251 Bank St, Ottawa, ON K2P 1X2', latitude: 45.4163, longitude: -75.6897, url: 'https://brucehouse.org/' },
+    { name: 'Capital Pride',            description: 'Ottawa Pride festival organisation.', address: null, latitude: null, longitude: null, url: 'https://capitalpride.ca/' },
+];
+
+jest.mock('./db', () => ({
+    query: jest.fn((sql) => {
+        // Return only rows with coordinates when the query filters by latitude/longitude
+        const wantsCoords = sql.includes('IS NOT NULL');
+        const rows = wantsCoords
+            ? mockLocations.filter(l => l.latitude !== null && l.longitude !== null)
+            : mockLocations;
+        return Promise.resolve({ rows });
+    }),
+}));
+
 const app = require('./server');
 
 describe('GET /', () => {
