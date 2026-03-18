@@ -8,9 +8,14 @@ interface Card {
     latitude: number | null;
     longitude: number | null;
     url: string | null;
+    categories: string[];
 }
 
-const CardDeck = ({title, onLocationSelect}: {title: string, onLocationSelect?: (lat: number, lng: number, name: string) => void}) => {
+const CardDeck = ({title, onLocationSelect, categoryFilter}: {
+    title: string,
+    onLocationSelect?: (lat: number, lng: number, name: string) => void,
+    categoryFilter?: string | null,
+}) => {
     const [cards, setCards] = useState<Card[]>([]);
 
     useEffect(() => {
@@ -23,11 +28,15 @@ const CardDeck = ({title, onLocationSelect}: {title: string, onLocationSelect?: 
             .catch(error => console.error('Error loading cards:', error));
     }, []);
 
+    const visibleCards = categoryFilter
+        ? cards.filter(card => card.categories.includes(categoryFilter))
+        : cards;
+
     return (
         <div style={{ justifyContent: 'center', alignItems: 'center' }}>
             <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#ffffffff', margin: '24px 0px 24px 0px' }}>{title}</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 24vw))', gap: '1.5vw' }}>
-                {cards.map((card, index) => (
+                {visibleCards.map((card, index) => (
                     <CardComponent 
                         key={index}
                         title={card.name} 
@@ -36,6 +45,7 @@ const CardDeck = ({title, onLocationSelect}: {title: string, onLocationSelect?: 
                         url={card.url}
                         latitude={card.latitude}
                         longitude={card.longitude}
+                        categories={card.categories}
                         onLocationSelect={onLocationSelect}
                     />
                 ))}

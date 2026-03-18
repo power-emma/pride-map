@@ -308,10 +308,35 @@ stop_server_process() {
 
 stop_servers() {
   stop_server_process "$LOG_DIR/server.pid"
+  # Also stop the watchdog so it doesn't restart a server we just killed
+  if [[ -f "$LOG_DIR/watchdog.pid" ]]; then
+    local wpid
+    wpid=$(cat "$LOG_DIR/watchdog.pid" 2>/dev/null || true)
+    if [[ -n "$wpid" ]] && kill -0 "$wpid" 2>/dev/null; then
+      kill "$wpid" 2>/dev/null || true
+    fi
+    rm -f "$LOG_DIR/watchdog.pid"
+  fi
   stop_nginx || true
 }
 
 start_servers
+
+# ---------------------------------------------------------------------------
+# Watchdog — delegates to watchdog.sh
+# ---------------------------------------------------------------------------
+WATCHDOG_INTERVAL=60   # seconds between health checks
+WATCHDOG_LOG="$LOG_DIR/watchdog.log"
+
+start_watchdog() {
+  bash "$ROOT_DIR/watchdog.sh" \
+    "$SERVER_PORT" "$SERVER_DIR" "$LOG_DIR" "$WATCHDOG_INTERVAL" &
+  WATCHDOG_PID=$!
+  echo "$WATCHDOG_PID" > "$LOG_DIR/watchdog.pid"
+  echo "Watchdog started (PID=$WATCHDOG_PID), log: $WATCHDOG_LOG"
+}
+
+start_watchdog
 
 get_port_for_pid() {
   local pid="$1"
@@ -434,6 +459,7 @@ while true; do
       run_npm_install_if_needed "$CLIENT_DIR" client || true
       build_client || true
       start_servers
+      start_watchdog
       ;;
     s)
       # refresh status
@@ -448,12 +474,26 @@ while true; do
       server_port_found="$(get_port_for_pid "$SERVER_PID" "$LOG_DIR/server.log" || true)"
       echo "Node server (PID $SERVER_PID): $server_status${server_port_found:+, port $server_port_found}"
       echo "nginx: $(nginx_status)"
+      if [[ -f "$LOG_DIR/watchdog.pid" ]]; then
+        wpid=$(cat "$LOG_DIR/watchdog.pid" 2>/dev/null || true)
+        if [[ -n "$wpid" ]] && kill -0 "$wpid" 2>/dev/null; then
+          echo "watchdog: running (PID $wpid), interval ${WATCHDOG_INTERVAL}s"
+        else
+          echo "watchdog: not running"
+        fi
+      fi
       echo "  → http://localhost:${NGINX_PORT}/      (React app, static build)"
       echo "  → http://localhost:${NGINX_PORT}/api/  (Node API)"
       ;;
     l)
       echo "---- server log (last 200 lines) ----"
       tail -n 200 "$LOG_DIR/server.log" || true
+      echo
+      echo "---- watchdog log (last 50 lines) ----"
+      tail -n 50 "$WATCHDOG_LOG" 2>/dev/null || echo "(no watchdog log yet)"
+      echo
+      echo "---- restart log (last 100 lines) ----"
+      tail -n 100 "$LOG_DIR/restarts.log" 2>/dev/null || echo "(no restarts yet)"
       echo
       echo "---- client build log (last 200 lines) ----"
       tail -n 200 "$LOG_DIR/client-build.log" 2>/dev/null || echo "(no client build log yet)"
