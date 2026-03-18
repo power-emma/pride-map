@@ -26,7 +26,7 @@ vi.mock('react-leaflet', () => ({
     })),
 }));
 
-// Mock SVG asset imports
+// Mock SVG asset imports — rainbow-pin.svg no longer used but keep for safety
 vi.mock('../assets/rainbow-pin.svg', () => ({ default: 'rainbow-pin.svg' }));
 
 // ─── Leaflet CSS mock ─────────────────────────────────────────────────────────
@@ -46,10 +46,11 @@ describe('Header', () => {
         expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
     });
 
-    it('renders the logo image with alt text', () => {
-        render(<Header />);
-        const logo = screen.getByAltText('Pride Map Logo');
-        expect(logo).toBeInTheDocument();
+    it('renders 6 pride-flag pin SVGs in the logo', () => {
+        const { container } = render(<Header />);
+        // The logo group contains one <svg> per pride colour
+        const svgs = container.querySelectorAll('header svg');
+        expect(svgs.length).toBe(6);
     });
 
     it('renders the Menu button', () => {
@@ -60,7 +61,8 @@ describe('Header', () => {
 
 // ─── CardComponent ────────────────────────────────────────────────────────────
 describe('CardComponent', () => {
-    it('renders the title and description', () => {
+    it('renders the title and description', async () => {
+        const user = userEvent.setup();
         render(
             <CardComponent
                 title="Test Organisation"
@@ -69,10 +71,13 @@ describe('CardComponent', () => {
             />
         );
         expect(screen.getByText('Test Organisation')).toBeInTheDocument();
+        // description is in the accordion body — open the card first
+        await user.click(screen.getByRole('button', { name: /test organisation/i }));
         expect(screen.getByText('A great organisation.')).toBeInTheDocument();
     });
 
-    it('renders the action button with the given text', () => {
+    it('renders the action button with the given text', async () => {
+        const user = userEvent.setup();
         render(
             <CardComponent
                 title="Test"
@@ -81,10 +86,12 @@ describe('CardComponent', () => {
                 url="https://example.com"
             />
         );
+        await user.click(screen.getByRole('button', { name: /test/i }));
         expect(screen.getByRole('link', { name: 'Visit Website' })).toBeInTheDocument();
     });
 
-    it('opens url in a new tab when a url is provided', () => {
+    it('opens url in a new tab when a url is provided', async () => {
+        const user = userEvent.setup();
         render(
             <CardComponent
                 title="Test"
@@ -93,12 +100,14 @@ describe('CardComponent', () => {
                 url="https://example.com"
             />
         );
+        await user.click(screen.getByRole('button', { name: /test/i }));
         const link = screen.getByRole('link', { name: 'Visit Website' });
         expect(link).toHaveAttribute('href', 'https://example.com');
         expect(link).toHaveAttribute('target', '_blank');
     });
 
-    it('renders a "See on Map" button when coordinates are provided', () => {
+    it('renders a "See on Map" button when coordinates are provided', async () => {
+        const user = userEvent.setup();
         render(
             <CardComponent
                 title="Test"
@@ -108,10 +117,12 @@ describe('CardComponent', () => {
                 longitude={-75.7}
             />
         );
+        await user.click(screen.getByRole('button', { name: /test/i }));
         expect(screen.getByRole('link', { name: /see on map/i })).toBeInTheDocument();
     });
 
-    it('does not render "See on Map" when coordinates are null', () => {
+    it('does not render "See on Map" when coordinates are null', async () => {
+        const user = userEvent.setup();
         render(
             <CardComponent
                 title="Test"
@@ -121,6 +132,7 @@ describe('CardComponent', () => {
                 longitude={null}
             />
         );
+        await user.click(screen.getByRole('button', { name: /test/i }));
         expect(screen.queryByRole('link', { name: /see on map/i })).not.toBeInTheDocument();
     });
 
@@ -137,6 +149,7 @@ describe('CardComponent', () => {
                 onLocationSelect={onLocationSelect}
             />
         );
+        await user.click(screen.getByRole('button', { name: /test location/i }));
         await user.click(screen.getByRole('link', { name: /see on map/i }));
         expect(onLocationSelect).toHaveBeenCalledOnce();
         expect(onLocationSelect).toHaveBeenCalledWith(45.4, -75.7, 'Test Location');
@@ -145,8 +158,8 @@ describe('CardComponent', () => {
 
 // ─── CardDeck ─────────────────────────────────────────────────────────────────
 const mockCards = [
-    { name: 'AIDS Committee of Ottawa', description: 'Supports those affected by HIV/AIDS.', address: '19 Main St', latitude: 45.41, longitude: -75.68, url: 'https://www.aco-cso.ca/' },
-    { name: 'Bruce House',              description: 'Housing support.',                      address: null,          latitude: null,  longitude: null,   url: null },
+    { name: 'AIDS Committee of Ottawa', description: 'Supports those affected by HIV/AIDS.', address: '19 Main St', latitude: 45.41, longitude: -75.68, url: 'https://www.aco-cso.ca/', categories: ['Community Organisations', 'Healthcare Resources'] },
+    { name: 'Bruce House',              description: 'Housing support.',                      address: null,          latitude: null,  longitude: null,   url: null,                            categories: ['Housing and Shelter'] },
 ];
 
 describe('CardDeck', () => {
@@ -179,10 +192,46 @@ describe('CardDeck', () => {
     });
 
     it('shows fallback text when a card has no description', async () => {
-        const noDescCards = [{ name: 'Empty', description: null, address: null, latitude: null, longitude: null, url: null }];
+        const user = userEvent.setup();
+        const noDescCards = [{ name: 'Empty', description: null, address: null, latitude: null, longitude: null, url: null, categories: [] }];
         (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ json: () => Promise.resolve(noDescCards) });
         render(<CardDeck title="Services" />);
-        await waitFor(() => expect(screen.getByText('No description available')).toBeInTheDocument());
+        // wait for card to appear, then open accordion to reveal body
+        await waitFor(() => expect(screen.getByText('Empty')).toBeInTheDocument());
+        await user.click(screen.getByRole('button', { name: /empty/i }));
+        expect(screen.getByText('No description available')).toBeInTheDocument();
+    });
+
+    it('shows all cards when categoryFilter is null', async () => {
+        render(<CardDeck title="Services" categoryFilter={null} />);
+        await waitFor(() => {
+            expect(screen.getByText('AIDS Committee of Ottawa')).toBeInTheDocument();
+            expect(screen.getByText('Bruce House')).toBeInTheDocument();
+        });
+    });
+
+    it('shows only cards matching the active categoryFilter', async () => {
+        render(<CardDeck title="Services" categoryFilter="Housing and Shelter" />);
+        await waitFor(() => {
+            expect(screen.queryByText('AIDS Committee of Ottawa')).not.toBeInTheDocument();
+            expect(screen.getByText('Bruce House')).toBeInTheDocument();
+        });
+    });
+
+    it('shows no cards when categoryFilter matches nothing', async () => {
+        render(<CardDeck title="Services" categoryFilter="Student Resources" />);
+        await waitFor(() => {
+            expect(screen.queryByText('AIDS Committee of Ottawa')).not.toBeInTheDocument();
+            expect(screen.queryByText('Bruce House')).not.toBeInTheDocument();
+        });
+    });
+
+    it('renders category tags on each card', async () => {
+        render(<CardDeck title="Services" />);
+        await waitFor(() => {
+            expect(screen.getByText('Community Organisations')).toBeInTheDocument();
+            expect(screen.getByText('Housing and Shelter')).toBeInTheDocument();
+        });
     });
 });
 
