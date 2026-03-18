@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import type { MouseEvent } from 'react';
+import { CATEGORY_COLOURS, DEFAULT_COLOUR } from './categoryColours';
 
 const CardComponent = ({ 
     title, 
@@ -7,6 +9,7 @@ const CardComponent = ({
     url, 
     latitude, 
     longitude, 
+    categories = [],
     onLocationSelect 
 }: { 
     title: string, 
@@ -15,10 +18,12 @@ const CardComponent = ({
     url?: string | null,
     latitude?: number | null,
     longitude?: number | null,
+    categories?: string[],
     onLocationSelect?: (lat: number, lng: number, name: string) => void
 }) => {
+    const [open, setOpen] = useState(false);
 
-    const hasLocation = latitude !== null && longitude !== null;
+    const hasLocation = latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined;
 
     const handleSeeOnMap = (e: MouseEvent) => {
         e.preventDefault();
@@ -28,68 +33,117 @@ const CardComponent = ({
     };
 
     return (
-        <>
-        <div style={{backgroundColor: '#5e5c64', border: '1px solid #c061cb', borderRadius: '8px', overflow: 'hidden', maxWidth: '33vw', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', fontFamily: 'system-ui, -apple-system, sans-serif'}}>
-            <div style={{ padding: '24px' }}>
-                <h3 style={{ fontSize: '24px', fontWeight: 700, color: '#ffffff', margin: '0 0 12px 0' }}>{title}</h3>
-                <div style={{ 
-                    fontSize: '16px', 
-                    color: '#ffffff', 
-                    opacity: 0.7, 
-                    margin: '0 0 20px 0', 
-                    lineHeight: 1.6,
-                    maxHeight: 'calc(1.6em * 4)',
-                    overflowY: 'auto',
-                    paddingRight: '8px'
-                }}>
-                    {description}
+        <div style={{
+            borderBottom: '1px solid #3d3846',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}>
+            {/* Row / header */}
+            <button
+                onClick={() => setOpen(o => !o)}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '10px 4px',
+                    textAlign: 'left',
+                    gap: '8px',
+                }}
+            >
+                <span style={{ fontSize: '15px', fontWeight: 600, color: '#ffffff' }}>{title}</span>
+                <span style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', flex: 1, marginLeft: '8px' }}>
+                    {categories.map(cat => {
+                        const colour = CATEGORY_COLOURS[cat] ?? DEFAULT_COLOUR;
+                        return (
+                            <span key={cat} style={{
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                color: '#ffffff',
+                                backgroundColor: colour.bg,
+                                border: `1px solid ${colour.border}`,
+                                borderRadius: '999px',
+                                padding: '2px 8px',
+                                whiteSpace: 'nowrap',
+                                letterSpacing: '0.02em',
+                            }}>
+                                {cat}
+                            </span>
+                        );
+                    })}
+                </span>
+                <span style={{
+                    fontSize: '18px',
+                    color: '#c061cb',
+                    flexShrink: 0,
+                    transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s',
+                    lineHeight: 1,
+                }}>▾</span>
+            </button>
+
+            {/* Accordion body */}
+            {open && (
+                <div style={{ padding: '0 4px 12px 4px' }}>
+                    <p style={{
+                        fontSize: '14px',
+                        color: '#ffffff',
+                        opacity: 0.75,
+                        margin: '0 0 12px 0',
+                        lineHeight: 1.6,
+                    }}>
+                        {description}
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {hasLocation && (
+                            <a
+                                href="#"
+                                onClick={handleSeeOnMap}
+                                style={{
+                                    display: 'inline-block',
+                                    backgroundColor: '#62a0ea',
+                                    color: 'white',
+                                    padding: '6px 16px',
+                                    borderRadius: '6px',
+                                    textDecoration: 'none',
+                                    fontWeight: 500,
+                                    fontSize: '13px',
+                                    transition: 'opacity 0.2s',
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                                See on Map
+                            </a>
+                        )}
+                        {url && (
+                            <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                    display: 'inline-block',
+                                    backgroundColor: '#c061cb',
+                                    color: 'white',
+                                    padding: '6px 16px',
+                                    borderRadius: '6px',
+                                    textDecoration: 'none',
+                                    fontWeight: 500,
+                                    fontSize: '13px',
+                                    transition: 'opacity 0.2s',
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
+                                onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                                {buttonText}
+                            </a>
+                        )}
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {hasLocation && (
-                        <a 
-                            href="#" 
-                            onClick={handleSeeOnMap}
-                            style={{ 
-                                display: 'inline-block', 
-                                backgroundColor: '#62a0ea', 
-                                color: 'white', 
-                                padding: '10px 24px', 
-                                borderRadius: '6px', 
-                                textDecoration: 'none', 
-                                fontWeight: 500, 
-                                fontSize: '14px', 
-                                transition: 'opacity 0.2s' 
-                            }} 
-                            onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'} 
-                            onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-                        >
-                            See on Map
-                        </a>
-                    )}
-                    <a 
-                        href={url || '#'} 
-                        target={url ? '_blank' : undefined} 
-                        rel={url ? 'noopener noreferrer' : undefined} 
-                        style={{ 
-                            display: 'inline-block', 
-                            backgroundColor: '#c061cb', 
-                            color: 'white', 
-                            padding: '10px 24px', 
-                            borderRadius: '6px', 
-                            textDecoration: 'none', 
-                            fontWeight: 500, 
-                            fontSize: '14px', 
-                            transition: 'opacity 0.2s' 
-                        }} 
-                        onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'} 
-                        onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
-                    >
-                        {buttonText}
-                    </a>
-                </div>
-            </div>
-      </div>
-    </>
+            )}
+        </div>
     );
 };
 
