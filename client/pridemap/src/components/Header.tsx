@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const PIN_PATH = "M12.5 0C5.596 0 0 5.596 0 12.5c0 9.375 12.5 28.5 12.5 28.5S25 21.875 25 12.5C25 5.596 19.404 0 12.5 0z";
 
@@ -31,19 +32,12 @@ export const Header: React.FC = () => {
             </div>
             <h1>Welcome to Pride Map</h1>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button style={{
-                    fontSize: '12px',
-                    padding: '14px 14px',
-                    cursor: 'pointer',
-                }}>Menu</button>
+                <nav style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Home</Link>
+                    <Link to="/create-location" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Add Location</Link>
+                    <Link to="/manage-locations" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Manage Locations</Link>
+                </nav>
             </div>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem' }}>
-            <img src={rainbowPin} alt="Pride Map Logo" style={{ height: '3em' }} />
-            <h1 style={{  }}>Welcome to Pride Map</h1>
-            <nav style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Home</Link>
-                <Link to="/create-location" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Add Location</Link>
-            </nav>
         </header>
     );
 };

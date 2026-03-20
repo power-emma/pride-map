@@ -5,6 +5,7 @@ import Header from './components/Header';
 import './App.css'
 import CardDeck from './CardDeck';
 import CreateLocationPage from './CreateLocationPage.tsx';
+import ManageLocationsPage from './ManageLocationsPage.tsx';
 
 function App() {
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
@@ -33,6 +34,7 @@ function App() {
 					}
 				/>
 				<Route path="/create-location" element={<CreateLocationPage />} />
+				<Route path="/manage-locations" element={<ManageLocationsPage />} />
 			</Routes>
 		</>
 	)

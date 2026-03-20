@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import CategoryCheckboxes from './components/CategoryCheckboxes';
 
 type Category = { id: number; name: string };
 
@@ -27,7 +28,7 @@ export default function CreateLocationPage() {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [url, setUrl] = useState('');
-  const [categoryId, setCategoryId] = useState<string>(''); // '' = no category
+  const [categoryIds, setCategoryIds] = useState<number[]>([]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -84,7 +85,7 @@ export default function CreateLocationPage() {
       latitude: lat,
       longitude: lng,
       url: toNullIfEmpty(url),
-      id_category: categoryId === '' ? null : Number(categoryId),
+      category_ids: categoryIds,
     };
 
     setSubmitting(true);
@@ -112,7 +113,7 @@ export default function CreateLocationPage() {
       setLatitude('');
       setLongitude('');
       setUrl('');
-      setCategoryId('');
+      setCategoryIds([]);
 
       // Small UX: return home after a brief beat
       setTimeout(() => navigate('/'), 400);
@@ -157,22 +158,15 @@ export default function CreateLocationPage() {
           />
         </label>
 
-        <label style={{ display: 'grid', gap: '0.35rem' }}>
-          <span style={{ fontWeight: 600 }}>Category</span>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            disabled={loadingCategories}
-            style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
-          >
-            <option value="">{loadingCategories ? 'Loading…' : 'No category'}</option>
-            {categories.map((c) => (
-              <option key={c.id} value={String(c.id)}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <span style={{ fontWeight: 600 }}>Categories</span>
+          <CategoryCheckboxes
+            categories={categories}
+            loading={loadingCategories}
+            selected={categoryIds}
+            onChange={setCategoryIds}
+          />
+        </div>
 
         <label style={{ display: 'grid', gap: '0.35rem' }}>
           <span style={{ fontWeight: 600 }}>Description</span>
