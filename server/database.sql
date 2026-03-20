@@ -22,8 +22,14 @@ CREATE TABLE locations (
     address VARCHAR(255),
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
-    url VARCHAR(255),
-    id_category INTEGER REFERENCES categories(id) ON DELETE SET NULL
+    url VARCHAR(255)
+);
+
+-- Junction table linking locations to their categories (many-to-many)
+CREATE TABLE location_categories (
+    id_location INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    id_category INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    PRIMARY KEY (id_location, id_category)
 );
 
 -- Categories givin in the innitial requirements. TODO: add a way to create these
@@ -96,3 +102,115 @@ INSERT INTO locations (name, description, address, latitude, longitude, url) VAL
 ('Venus Envy', 'Venus Envy - Description to be added', NULL, NULL, NULL, 'https://www.venusenvy.ca/'),
 ('Wisdom 2 action', 'Wisdom 2 action - Description to be added', NULL, NULL, NULL, 'https://www.wisdom2action.org/'),
 ('Youth Services Bureau', 'Youth Services Bureau - Description to be added', '2887 Riverside Drive, Ottawa, Ontario, K1V 8N5', 45.3696699, -75.6896829, 'https://www.ysb.ca/');
+
+-- Default category assignments for each location
+INSERT INTO location_categories (id_location, id_category)
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'AIDS Committee of Ottawa'                          AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'BIPOC Women''s Health Network'                   AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Black Femme Legal'                               AND c.name = 'Legal Services'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Bruce House'                                     AND c.name = 'Housing and Shelter'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Capital Pride'                                   AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Capital Pups'                                    AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Capital Rainbow Refuge'                          AND c.name = 'Refugees and Immigrant Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Centertown Community Health Centre'              AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Centertown Community Health Centre'              AND c.name = 'Trans Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Dignity Network Canada'                          AND c.name = 'Advocacy Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Family Services Ottawa'                          AND c.name = 'Parents and Family Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Feminist Resource Centre'                        AND c.name = 'Student Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'FrancoQueer'                                     AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Frontrunners Ottawa Running and Walking Group'   AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'GetAKit'                                         AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Goodhead'                                        AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Human Rights Legal Support Centre'               AND c.name = 'Legal Services'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'IO Advisory'                                     AND c.name = 'Employment Services'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'KindSpace'                                       AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Legal Aid Ontario'                               AND c.name = 'Legal Services'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Lesbian Outdoor Group'                           AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Lookout'                                         AND c.name = 'Queer Nightlife'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'MAXOttawa'                                       AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'One in Ten'                                      AND c.name = 'Queer Businesses'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa Birth and Wellness Centre'                AND c.name = 'Parents and Family Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa Community Immigrant Services Organisation' AND c.name = 'Refugees and Immigrant Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa Pride Hockey'                             AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa Public Health Sexual Clinic'              AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa TimeOut Hiking Club'                      AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa Wolves Rugby Club'                        AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ottawa''s LGBTQ+ Softball League'               AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Planned Parenthood Ottawa'                       AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Pride Capital Volleyball'                        AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Probe Ottawa'                                    AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Queer Momentum'                                  AND c.name = 'Advocacy Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Rainbow Refugee'                                 AND c.name = 'Refugees and Immigrant Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Rainbow Rockers Curling Club'                    AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Rideau Speedos'                                  AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Stroked Ego'                                     AND c.name = 'Queer Businesses'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Swizzles'                                        AND c.name = 'Queer Nightlife'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'T''s All Welcoming Pub'                         AND c.name = 'Queer Nightlife'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Ten Oaks Project'                                AND c.name = 'Parents and Family Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'The Gay Zone'                                    AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Tone Cluster Queer Choir'                        AND c.name = 'Sports and Activity Groups'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Trans Health Ottawa'                             AND c.name = 'Trans Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Trans Health Ottawa'                             AND c.name = 'Healthcare Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Trans Library of Ottawa'                         AND c.name = 'Trans Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Trans Outaouais'                                  AND c.name = 'Trans Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'University of Carleton Gender and Sexuality Resource Centre' AND c.name = 'Student Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'University of Ottawa Pride Centre'               AND c.name = 'Student Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'University of Ottawa''s Community Legal Clinic'  AND c.name = 'Legal Services'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'University of Ottawa''s Community Legal Clinic'  AND c.name = 'Student Resources'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Venus Envy'                                      AND c.name = 'Queer Businesses'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Wisdom 2 action'                                 AND c.name = 'Community Organisations'
+UNION ALL
+SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Youth Services Bureau'                           AND c.name = 'Employment Services';

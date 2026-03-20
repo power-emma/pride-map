@@ -4,10 +4,13 @@ import { useMap } from "react-leaflet";
 import UserMarkerComponent from './UserMarkerComponent';
 import MarkerComponent from './MarkerComponent';
 
-const MarkerContainer = ({ selectedLocation: _selectedLocation }: { selectedLocation?: {lat: number, lng: number, name: string} }) => {
+const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter }: {
+    selectedLocation?: {lat: number, lng: number, name: string},
+    categoryFilter: string | null,
+}) => {
     const map = useMap();
     void map;
-    const [pins, setPins] = useState<{ name: string, position: [number, number] }[]>([]);
+    const [pins, setPins] = useState<{ name: string, position: [number, number], categories: string[] }[]>([]);
 
     useEffect(() => {
         fetch('/api/pins/all')
@@ -18,12 +21,17 @@ const MarkerContainer = ({ selectedLocation: _selectedLocation }: { selectedLoca
         .catch(error => console.error(error));
     }, []);
 
-    const dataToMarkers = pins.map((pin, index) => {
+    const visiblePins = categoryFilter
+        ? pins.filter(pin => pin.categories.includes(categoryFilter))
+        : pins;
+
+    const dataToMarkers = visiblePins.map((pin, index) => {
         return (
             <MarkerComponent 
                 key={index} 
                 name={pin.name} 
                 position={pin.position}
+                categories={pin.categories}
             />
         );
     });
