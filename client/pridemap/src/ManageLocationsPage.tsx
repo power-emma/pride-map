@@ -47,10 +47,12 @@ export default function ManageLocationsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // 'idle' = nothing selected, 'edit' = editing existing, 'create' = new location form
+  const [mode, setMode] = useState<'idle' | 'edit' | 'create'>('idle');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
 
-  // Edit form state
+  // Shared form state (used for both edit and create)
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
@@ -83,8 +85,23 @@ export default function ManageLocationsPage() {
     return locations.filter(l => l.name.toLowerCase().includes(q));
   }, [locations, search]);
 
+  function clearForm() {
+    setName('');
+    setDescription('');
+    setAddress('');
+    setLatitude('');
+    setLongitude('');
+    setUrl('');
+    setCategoryIds([]);
+    setSaveError(null);
+    setSaveSuccess(null);
+    setConfirmDelete(false);
+  }
+
   function selectLocation(loc: Location) {
+    clearForm();
     setSelectedId(loc.id);
+    setMode('edit');
     setName(loc.name);
     setDescription(loc.description ?? '');
     setAddress(loc.address ?? '');
@@ -92,9 +109,12 @@ export default function ManageLocationsPage() {
     setLongitude(loc.longitude != null ? String(loc.longitude) : '');
     setUrl(loc.url ?? '');
     setCategoryIds(loc.category_ids);
-    setSaveError(null);
-    setSaveSuccess(null);
-    setConfirmDelete(false);
+  }
+
+  function openCreate() {
+    clearForm();
+    setSelectedId(null);
+    setMode('create');
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -133,26 +153,64 @@ export default function ManageLocationsPage() {
         return;
       }
 
-      // Update local list
       setLocations(prev =>
         prev.map(l =>
           l.id === selectedId
-            ? {
-                ...l,
-                name: payload.name,
-                description: payload.description,
-                address: payload.address,
-                latitude: payload.latitude,
-                longitude: payload.longitude,
-                url: payload.url,
-                category_ids: payload.category_ids,
-              }
+            ? { ...l, ...payload }
             : l
         )
       );
       setSaveSuccess('Saved successfully.');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setSaveError(null);
+    setSaveSuccess(null);
+
+    const lat = toNullableNumber(latitude);
+    const lng = toNullableNumber(longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) {
+      setSaveError('Latitude/Longitude must be valid numbers (or left blank).');
+      return;
+    }
+
+    const payload = {
+      name: name.trim(),
+      description: toNullIfEmpty(description),
+      address: toNullIfEmpty(address),
+      latitude: lat,
+      longitude: lng,
+      url: toNullIfEmpty(url),
+      category_ids: categoryIds,
+    };
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/locations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setSaveError(json?.error ?? `Failed to create (${res.status})`);
+        return;
+      }
+
+      const newLoc: Location = { id: json.id, ...payload, category_ids: payload.category_ids };
+      setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
+      setSaveSuccess('Location created.');
+      // Switch to editing the new location
+      setSelectedId(json.id);
+      setMode('edit');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to create');
     } finally {
       setSaving(false);
     }
@@ -176,6 +234,7 @@ export default function ManageLocationsPage() {
       }
       setLocations(prev => prev.filter(l => l.id !== selectedId));
       setSelectedId(null);
+      setMode('idle');
       setConfirmDelete(false);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to delete');
@@ -189,12 +248,113 @@ export default function ManageLocationsPage() {
   if (loading) return <div style={{ padding: '2rem' }}>Loading…</div>;
   if (loadError) return <div style={{ padding: '2rem', color: '#ff5a5a' }}>Error: {loadError}</div>;
 
+  const sharedForm = (isCreate: boolean) => (
+    <form onSubmit={isCreate ? handleCreate : handleSave} style={{ display: 'grid', gap: '0.75rem' }}>
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Name *</span>
+        <input value={name} onChange={e => setName(e.target.value)} required style={inputStyle} />
+      </label>
+
+      <div style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Categories</span>
+        <CategoryCheckboxes
+          categories={categories}
+          loading={false}
+          selected={categoryIds}
+          onChange={setCategoryIds}
+        />
+      </div>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Description</span>
+        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} style={inputStyle} />
+      </label>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Address</span>
+        <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
+      </label>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 600 }}>Latitude</span>
+          <input value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 45.421" inputMode="decimal" style={inputStyle} />
+        </label>
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 600 }}>Longitude</span>
+          <input value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -75.690" inputMode="decimal" style={inputStyle} />
+        </label>
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.7 }}>
+        Coordinates are optional but required for a map pin.
+      </div>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Website URL</span>
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
+      </label>
+
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+        <button
+          type="submit"
+          disabled={saving || name.trim().length === 0}
+          style={{ padding: '0.6rem 1.1rem', borderRadius: 8, border: '1px solid #444', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}
+        >
+          {saving ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Location' : 'Save Changes')}
+        </button>
+
+        {!isCreate && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              padding: '0.6rem 1.1rem',
+              borderRadius: 8,
+              border: `1px solid ${confirmDelete ? '#ff5a5a' : '#444'}`,
+              fontWeight: 700,
+              color: confirmDelete ? '#ff5a5a' : 'inherit',
+              cursor: deleting ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {deleting ? 'Deleting…' : confirmDelete ? 'Confirm Delete' : 'Delete'}
+          </button>
+        )}
+
+        {confirmDelete && (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(false)}
+            style={{ padding: '0.6rem 0.9rem', borderRadius: 8, border: '1px solid #444', cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: 'calc(100vh - 72px)', overflow: 'hidden' }}>
 
       {/* Sidebar */}
       <div style={{ borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '0.75rem', borderBottom: '1px solid #333' }}>
+        <div style={{ padding: '0.75rem', borderBottom: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <button
+            onClick={openCreate}
+            style={{
+              padding: '0.55rem 0.75rem',
+              borderRadius: 8,
+              border: '1px solid #555',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: mode === 'create' ? '#2a2a2a' : 'transparent',
+              color: 'inherit',
+              textAlign: 'left',
+            }}
+          >
+            + Add Location
+          </button>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -215,12 +375,12 @@ export default function ManageLocationsPage() {
                 width: '100%',
                 textAlign: 'left',
                 padding: '0.65rem 0.75rem',
-                background: loc.id === selectedId ? '#2a2a2a' : 'transparent',
+                background: loc.id === selectedId && mode === 'edit' ? '#2a2a2a' : 'transparent',
                 border: 'none',
                 borderBottom: '1px solid #222',
                 color: 'inherit',
                 cursor: 'pointer',
-                fontWeight: loc.id === selectedId ? 700 : 400,
+                fontWeight: loc.id === selectedId && mode === 'edit' ? 700 : 400,
               }}
             >
               <div style={{ fontSize: 14 }}>{loc.name}</div>
@@ -233,116 +393,33 @@ export default function ManageLocationsPage() {
         </div>
       </div>
 
-      {/* Edit panel */}
+      {/* Right panel */}
       <div style={{ overflowY: 'auto', padding: '1.5rem' }}>
-        {selectedLocation == null ? (
+        <div style={{ maxWidth: 640, width: '100%', margin: '0 auto' }}>
+        {mode === 'idle' && (
           <div style={{ opacity: 0.5, marginTop: '2rem', textAlign: 'center' }}>
-            Select a location from the sidebar to edit it.
+            Select a location to edit it, or click <strong>+ Add Location</strong>.
           </div>
-        ) : (
+        )}
+
+        {mode === 'create' && (
           <>
-            <h2 style={{ margin: '0 0 1rem 0' }}>Edit: {selectedLocation.name}</h2>
-
-            {saveError && (
-              <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>
-                {saveError}
-              </div>
-            )}
-            {saveSuccess && (
-              <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>
-                {saveSuccess}
-              </div>
-            )}
-
-            <form onSubmit={handleSave} style={{ display: 'grid', gap: '0.75rem', maxWidth: 640 }}>
-              <label style={labelStyle}>
-                <span style={{ fontWeight: 600 }}>Name *</span>
-                <input value={name} onChange={e => setName(e.target.value)} required style={inputStyle} />
-              </label>
-
-              <div style={labelStyle}>
-                <span style={{ fontWeight: 600 }}>Categories</span>
-                <CategoryCheckboxes
-                  categories={categories}
-                  loading={false}
-                  selected={categoryIds}
-                  onChange={setCategoryIds}
-                />
-              </div>
-
-              <label style={labelStyle}>
-                <span style={{ fontWeight: 600 }}>Description</span>
-                <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} style={inputStyle} />
-              </label>
-
-              <label style={labelStyle}>
-                <span style={{ fontWeight: 600 }}>Address</span>
-                <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
-              </label>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <label style={labelStyle}>
-                  <span style={{ fontWeight: 600 }}>Latitude</span>
-                  <input value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 45.421" inputMode="decimal" style={inputStyle} />
-                </label>
-                <label style={labelStyle}>
-                  <span style={{ fontWeight: 600 }}>Longitude</span>
-                  <input value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -75.690" inputMode="decimal" style={inputStyle} />
-                </label>
-              </div>
-              <div style={{ fontSize: 13, opacity: 0.7 }}>
-                Coordinates are optional but required for a map pin.
-              </div>
-
-              <label style={labelStyle}>
-                <span style={{ fontWeight: 600 }}>Website URL</span>
-                <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
-              </label>
-
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                <button
-                  type="submit"
-                  disabled={saving || name.trim().length === 0}
-                  style={{
-                    padding: '0.6rem 1.1rem',
-                    borderRadius: 8,
-                    border: '1px solid #444',
-                    fontWeight: 700,
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  style={{
-                    padding: '0.6rem 1.1rem',
-                    borderRadius: 8,
-                    border: `1px solid ${confirmDelete ? '#ff5a5a' : '#444'}`,
-                    fontWeight: 700,
-                    color: confirmDelete ? '#ff5a5a' : 'inherit',
-                    cursor: deleting ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {deleting ? 'Deleting…' : confirmDelete ? 'Confirm Delete' : 'Delete'}
-                </button>
-
-                {confirmDelete && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(false)}
-                    style={{ padding: '0.6rem 0.9rem', borderRadius: 8, border: '1px solid #444', cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
+            <h2 style={{ margin: '0 0 1rem 0' }}>Add a Location</h2>
+            {saveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{saveError}</div>}
+            {saveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{saveSuccess}</div>}
+            {sharedForm(true)}
           </>
         )}
+
+        {mode === 'edit' && selectedLocation != null && (
+          <>
+            <h2 style={{ margin: '0 0 1rem 0' }}>Edit: {selectedLocation.name}</h2>
+            {saveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{saveError}</div>}
+            {saveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{saveSuccess}</div>}
+            {sharedForm(false)}
+          </>
+        )}
+        </div>
       </div>
     </div>
   );

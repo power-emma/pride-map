@@ -34,7 +34,6 @@ export const Header: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <nav style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                     <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Home</Link>
-                    <Link to="/create-location" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Add Location</Link>
                     <Link to="/manage-locations" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Manage Locations</Link>
                 </nav>
             </div>
