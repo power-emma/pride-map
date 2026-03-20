@@ -8,8 +8,8 @@ const getValidPins = async () => {
         const result = await pool.query(`
             SELECT
                 l.name,
-                l.latitude,
-                l.longitude,
+                l.latitude::float8 AS latitude,
+                l.longitude::float8 AS longitude,
                 COALESCE(
                     ARRAY_AGG(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL),
                     '{}'

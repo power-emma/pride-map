@@ -10,8 +10,8 @@ router.get('/', async (req, res) => {
                 l.name,
                 l.description,
                 l.address,
-                l.latitude,
-                l.longitude,
+                l.latitude::float8 AS latitude,
+                l.longitude::float8 AS longitude,
                 l.url,
                 COALESCE(
                     ARRAY_AGG(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL),
@@ -47,8 +47,8 @@ router.get('/with-location', async (req, res) => {
                 l.name,
                 l.description,
                 l.address,
-                l.latitude,
-                l.longitude,
+                l.latitude::float8 AS latitude,
+                l.longitude::float8 AS longitude,
                 l.url,
                 COALESCE(
                     ARRAY_AGG(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL),
