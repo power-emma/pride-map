@@ -1,9 +1,12 @@
 import { useState, useRef } from 'react'
+import { Routes, Route } from 'react-router-dom'
 import MapComponent from './MapComponent';
 import Header from './components/Header';
 import CategoryFilter from './components/CategoryFilter';
 import './App.css'
 import CardDeck from './CardDeck';
+import CreateLocationPage from './CreateLocationPage.tsx';
+import ManageLocationsPage from './ManageLocationsPage.tsx';
 
 function App() {
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
@@ -18,14 +21,24 @@ function App() {
 
 	return (
 		<>
-			<Header></Header>
-			<div ref={mapRef}>
-				<MapComponent selectedLocation={selectedLocation} categoryFilter={categoryFilter} />
-			</div>
-			<div className="card-section">
-				<CategoryFilter selected={categoryFilter} onChange={setCategoryFilter} />
-				<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} />
-			</div>
+			<Header />
+			<Routes>
+				<Route
+					path="/"
+					element={
+						<>
+							<div ref={mapRef}>
+								<MapComponent selectedLocation={selectedLocation} categoryFilter={categoryFilter} />
+							</div>
+							<CategoryFilter selected={categoryFilter} onChange={setCategoryFilter} />
+							<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} />
+							<br />
+						</>
+					}
+				/>
+				<Route path="/create-location" element={<CreateLocationPage />} />
+				<Route path="/manage-locations" element={<ManageLocationsPage />} />
+			</Routes>
 		</>
 	)
 }

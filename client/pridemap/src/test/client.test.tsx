@@ -33,6 +33,7 @@ vi.mock('../assets/rainbow-pin.svg', () => ({ default: 'rainbow-pin.svg' }));
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 
 // ─── Component imports (after mocks) ─────────────────────────────────────────
+import { MemoryRouter } from 'react-router-dom';
 import Header from '../components/Header';
 import CardComponent from '../CardComponent';
 import CardDeck from '../CardDeck';
@@ -42,20 +43,21 @@ import App from '../App';
 // ─── Header ──────────────────────────────────────────────────────────────────
 describe('Header', () => {
     it('renders the app title', () => {
-        render(<Header />);
+        render(<MemoryRouter><Header /></MemoryRouter>);
         expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
     });
 
     it('renders 6 pride-flag pin SVGs in the logo', () => {
-        const { container } = render(<Header />);
+        const { container } = render(<MemoryRouter><Header /></MemoryRouter>);
         // The logo group contains one <svg> per pride colour
         const svgs = container.querySelectorAll('header svg');
         expect(svgs.length).toBe(6);
     });
 
-    it('renders the Menu button', () => {
-        render(<Header />);
-        expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument();
+    it('renders the nav links', () => {
+        render(<MemoryRouter><Header /></MemoryRouter>);
+        expect(screen.getByRole('link', { name: /home/i })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /manage locations/i })).toBeInTheDocument();
     });
 });
 
@@ -257,17 +259,17 @@ describe('App', () => {
     });
 
     it('renders the Header', async () => {
-        render(<App />);
+        render(<MemoryRouter><App /></MemoryRouter>);
         expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
     });
 
     it('renders the map container', async () => {
-        render(<App />);
+        render(<MemoryRouter><App /></MemoryRouter>);
         expect(screen.getByTestId('map-container')).toBeInTheDocument();
     });
 
     it('renders the off-map services section title', async () => {
-        render(<App />);
+        render(<MemoryRouter><App /></MemoryRouter>);
         expect(screen.getByText('Off-Map Services!')).toBeInTheDocument();
     });
 });
