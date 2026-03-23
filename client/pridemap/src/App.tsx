@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import MapComponent from './MapComponent';
 import Header from './components/Header';
+import CategoryFilter from './components/CategoryFilter';
 import './App.css'
 import CardDeck from './CardDeck';
 import CreateLocationPage from './CreateLocationPage.tsx';
@@ -9,6 +10,7 @@ import ManageLocationsPage from './ManageLocationsPage.tsx';
 
 function App() {
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
+	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 	const mapRef = useRef<HTMLDivElement>(null);
 
 	const handleLocationSelect = (lat: number, lng: number, name: string) => {
@@ -26,9 +28,10 @@ function App() {
 					element={
 						<>
 							<div ref={mapRef}>
-								<MapComponent selectedLocation={selectedLocation} />
+								<MapComponent selectedLocation={selectedLocation} categoryFilter={categoryFilter} />
 							</div>
-							<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} />
+							<CategoryFilter selected={categoryFilter} onChange={setCategoryFilter} />
+							<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} />
 							<br />
 						</>
 					}
