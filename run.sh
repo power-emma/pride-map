@@ -2,8 +2,30 @@
 
 # Script to run both client and server, then terminate on Enter key press
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+install_if_needed() {
+  local dir="$1"
+  local label="$2"
+
+  local needs_install=false
+  if [[ ! -d "$dir/node_modules" ]]; then
+    needs_install=true
+  elif [[ "$dir/package.json" -nt "$dir/node_modules" ]]; then
+    needs_install=true
+  fi
+
+  if $needs_install; then
+    echo "Installing npm dependencies for $label..."
+    (cd "$dir" && npm install) || { echo "npm install failed for $label"; exit 1; }
+  fi
+}
+
 echo "Starting Pride Map..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+install_if_needed "$SCRIPT_DIR/server" "server"
+install_if_needed "$SCRIPT_DIR/client/pridemap" "client"
 
 # Start server in background
 echo "Starting server on http://localhost:3001..."

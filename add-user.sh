@@ -71,18 +71,17 @@ PASSWORD=""
 PASSWORD_CONFIRM=""
 
 # ── Upsert into the database ───────────────────────────────────────────────────
-export PGHOST="${PGHOST:-localhost}"
-export PGPORT="${PGPORT:-5432}"
-export PGDATABASE="${PGDATABASE:-pridemap}"
-export PGUSER="${PGUSER:-pridemap}"
-
-# PGPASSWORD can be set in the environment before calling this script.
-# We pass the username and hash via a Node.js helper so that bcrypt's special
-# characters ($, /, etc.) are never interpreted by the shell or psql variable
-# substitution — they go straight into a parameterised query.
+# Credentials are passed explicitly to Node so the script works with or without
+# sudo and regardless of whether PGPASSWORD is set in the environment.
 cd "$SERVER_DIR" && node -e "
 const { Client } = require('pg');
-const client = new Client();
+const client = new Client({
+  host:     process.env.PGHOST     || 'localhost',
+  port:     process.env.PGPORT     || 5432,
+  database: process.env.PGDATABASE || 'pridemap',
+  user:     process.env.PGUSER     || 'pridemap',
+  password: process.env.PGPASSWORD || 'Postgres!',
+});
 client.connect()
   .then(() => client.query(
     \`INSERT INTO admin_users (username, password_hash)

@@ -31,7 +31,16 @@ run_npm_install_if_needed() {
   local label="$2"
   local install_log="$LOG_DIR/${label}-install.log"
 
+  # Run npm install if node_modules is missing OR if package.json is newer than
+  # node_modules (i.e. dependencies have changed since the last install).
+  local needs_install=false
   if [[ ! -d "$dir/node_modules" ]]; then
+    needs_install=true
+  elif [[ "$dir/package.json" -nt "$dir/node_modules" ]]; then
+    needs_install=true
+  fi
+
+  if $needs_install; then
     if ! command -v npm >/dev/null 2>&1; then
       echo "npm is not installed or not on PATH; cannot install dependencies for $label"
       return 1
@@ -322,9 +331,9 @@ stop_servers() {
 
 start_servers
 
-# ---------------------------------------------------------------------------
+
 # Watchdog — delegates to watchdog.sh
-# ---------------------------------------------------------------------------
+
 WATCHDOG_INTERVAL=60   # seconds between health checks
 WATCHDOG_LOG="$LOG_DIR/watchdog.log"
 
