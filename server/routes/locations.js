@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { requireAuth } = require('../middleware/auth');
 
 function emptyToNull(value) {
   if (value === undefined || value === null) return null;
@@ -53,7 +54,7 @@ function parseCategoryIds(raw) {
 }
 
 // PUT update an existing location
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
@@ -113,7 +114,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE a location
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
@@ -132,7 +133,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
     const name = emptyToNull(req.body?.name);
     if (!name) {

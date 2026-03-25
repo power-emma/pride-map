@@ -1,3 +1,5 @@
 /server/node_modules
 /logs
 /client/pridemap/src/Queer Ottawa Map
+/server/jwt-secret
+jwt-secret

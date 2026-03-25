@@ -22,7 +22,12 @@ const PridePin: React.FC<{ colour: string; height?: number }> = ({ colour, heigh
     );
 };
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+    authToken?: string | null;
+    onLogout?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ authToken, onLogout }) => {
     return (
         <header style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '6px 4px 6px 4px' }}>
@@ -35,6 +40,22 @@ export const Header: React.FC = () => {
                 <nav style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                     <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Home</Link>
                     <Link to="/manage-locations" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Manage Locations</Link>
+                    {authToken && onLogout && (
+                        <button
+                            onClick={onLogout}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid #555',
+                                borderRadius: 6,
+                                color: 'inherit',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                padding: '0.3rem 0.75rem',
+                            }}
+                        >
+                            Sign out
+                        </button>
+                    )}
                 </nav>
             </div>
         </header>
