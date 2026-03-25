@@ -16,8 +16,10 @@ const CategoryFilter = ({
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            margin: '20px 0 12px 0',
+            margin: '16px 0 12px 0',
             fontFamily: 'system-ui, -apple-system, sans-serif',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
         }}>
             <label
                 htmlFor="category-filter"
@@ -44,7 +46,9 @@ const CategoryFilter = ({
                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23aaa' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`,
                     backgroundRepeat: 'no-repeat',
                     backgroundPosition: 'right 10px center',
-                    minWidth: '220px',
+                    minWidth: '180px',
+                    maxWidth: '100%',
+                    width: 'clamp(180px, 60vw, 320px)',
                     transition: 'border-color 0.15s',
                 }}
             >

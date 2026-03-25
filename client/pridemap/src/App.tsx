@@ -45,7 +45,7 @@ function App() {
 					path="/"
 					element={
 						<>
-							<div ref={mapRef}>
+							<div ref={mapRef} className="map-wrapper">
 								<MapComponent selectedLocation={selectedLocation} categoryFilter={categoryFilter} />
 							</div>
 							<CategoryFilter selected={categoryFilter} onChange={setCategoryFilter} />
