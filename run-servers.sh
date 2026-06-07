@@ -244,7 +244,7 @@ user $current_user;
 pid $nginx_pid_file;
 events { worker_connections 1024; }
 http {
-    types_hash_max_size 2048;
+    types_hash_max_size 4096;
     ${mime_include}
     default_type application/octet-stream;
     sendfile on;

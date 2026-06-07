@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # watchdog.sh
-# Polls the Node API and restarts it if unresponsive.
+# Monitors the Node server process and restarts it if it dies.
+# Does NOT make HTTP requests — checks the process directly so it works
+# even when the server is mid-crash and cannot serve responses.
 #
 # Usage (normally called by run-servers.sh, not directly):
 #   ./watchdog.sh <server_port> <server_dir> <log_dir> <watchdog_interval>
@@ -23,19 +25,43 @@ start_node_server() {
   ( cd "$SERVER_DIR" && PORT="$SERVER_PORT" node server.js ) >> "$LOG_DIR/server.log" 2>&1 &
   local new_pid=$!
   echo "$new_pid" > "$LOG_DIR/server.pid"
-  log "server restarted, new PID=$new_pid"
+  log "server started/restarted, new PID=$new_pid"
 }
 
-log "started — checking http://127.0.0.1:${SERVER_PORT}/ every ${WATCHDOG_INTERVAL}s"
+# Returns 0 (true) if the server process appears to be alive.
+# Checks the PID file first; falls back to checking if anything is bound
+# to SERVER_PORT. No HTTP request is made — this is intentionally
+# independent of the server's ability to respond.
+server_is_alive() {
+  # Primary: recorded PID still exists
+  if [[ -f "$LOG_DIR/server.pid" ]]; then
+    local pid
+    pid=$(cat "$LOG_DIR/server.pid" 2>/dev/null || true)
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  # Secondary: something is bound to our port (handles the case where
+  # the server was started outside of this script without a PID file)
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp 2>/dev/null | grep -q ":${SERVER_PORT}\b" && return 0
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser "${SERVER_PORT}/tcp" >/dev/null 2>&1 && return 0
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"${SERVER_PORT}" -sTCP:LISTEN >/dev/null 2>&1 && return 0
+  fi
+
+  return 1
+}
+
+log "started — checking server process every ${WATCHDOG_INTERVAL}s (port ${SERVER_PORT})"
 
 while true; do
   sleep "$WATCHDOG_INTERVAL"
 
-  response=$(curl -s --connect-timeout 5 --max-time 10 \
-    "http://127.0.0.1:${SERVER_PORT}/" 2>/dev/null || true)
-
-  if [[ -z "$response" ]]; then
-    log "no response from server, restarting..."
+  if ! server_is_alive; then
+    log "server process is gone, restarting..."
 
     # Snapshot the server log at the moment of failure for post-mortem debugging
     {
@@ -51,7 +77,7 @@ while true; do
 
     log "server log snapshot written to $RESTART_LOG"
 
-    # Kill the stale process if it still exists
+    # Clean up any stale PID
     if [[ -f "$LOG_DIR/server.pid" ]]; then
       old_pid=$(cat "$LOG_DIR/server.pid" 2>/dev/null || true)
       if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then

@@ -1,8 +1,10 @@
 const express = require('express');
 const app = express();
 const cors = require('cors');
+const requestLogger = require('./middleware/requestLogger');
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 
 // Prevent DB connection drops or other async errors from silently
 // killing the process with no log trace.
