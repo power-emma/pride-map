@@ -214,3 +214,12 @@ UNION ALL
 SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Wisdom 2 action'                                 AND c.name = 'Community Organisations'
 UNION ALL
 SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Youth Services Bureau'                           AND c.name = 'Employment Services';
+
+-- Table for admin users (manage-locations page authentication)
+-- Passwords are stored as bcrypt hashes; use the add-user.sh script to create users.
+CREATE TABLE admin_users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

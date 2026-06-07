@@ -14,6 +14,13 @@ type Location = {
   category_ids: number[];
 };
 
+interface ManageLocationsPageProps {
+  /** JWT token to attach to mutating API requests. */
+  authToken: string;
+  /** Called when the server returns 401, so App can clear the token. */
+  onAuthError: () => void;
+}
+
 function toNullIfEmpty(value: string) {
   const trimmed = value.trim();
   return trimmed === '' ? null : trimmed;
@@ -41,7 +48,7 @@ const labelStyle: React.CSSProperties = {
   gap: '0.3rem',
 };
 
-export default function ManageLocationsPage() {
+export default function ManageLocationsPage({ authToken, onAuthError }: ManageLocationsPageProps) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,10 +151,14 @@ export default function ManageLocationsPage() {
     try {
       const res = await fetch(`/api/locations/${selectedId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
         setSaveError(json?.error ?? `Failed to save (${res.status})`);
         return;
@@ -194,10 +205,14 @@ export default function ManageLocationsPage() {
     try {
       const res = await fetch('/api/locations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
         setSaveError(json?.error ?? `Failed to create (${res.status})`);
         return;
@@ -225,8 +240,12 @@ export default function ManageLocationsPage() {
     setDeleting(true);
     setSaveError(null);
     try {
-      const res = await fetch(`/api/locations/${selectedId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/locations/${selectedId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      });
       const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
         setSaveError(json?.error ?? `Failed to delete (${res.status})`);
         setDeleting(false);
