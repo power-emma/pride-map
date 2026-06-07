@@ -35,7 +35,7 @@ const CardDeck = ({title, onLocationSelect, categoryFilter}: {
     return (
         <div style={{ justifyContent: 'center', alignItems: 'center' }}>
             <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#ffffffff', margin: '24px 0px 24px 0px' }}>{title}</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 24vw))', gap: '1.5vw' }}>
+            <div className="card-grid">
                 {visibleCards.map((card, index) => (
                     <CardComponent 
                         key={index}

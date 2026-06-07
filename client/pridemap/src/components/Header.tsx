@@ -22,21 +22,40 @@ const PridePin: React.FC<{ colour: string; height?: number }> = ({ colour, heigh
     );
 };
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+    authToken?: string | null;
+    onLogout?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ authToken, onLogout }) => {
     return (
-        <header style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '6px 4px 6px 4px' }}>
+        <header className="site-header">
+            <div className="site-header__pins">
                 {PRIDE_COLOURS.map(colour => (
                     <PridePin key={colour} colour={colour} height={60} />
                 ))}
             </div>
-            <h1>Welcome to Pride Map</h1>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <nav style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Home</Link>
-                    <Link to="/manage-locations" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Manage Locations</Link>
-                </nav>
-            </div>
+            <h1 className="site-header__title">Welcome to Pride Map</h1>
+            <nav className="site-header__nav">
+                <Link to="/" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Home</Link>
+                <Link to="/manage-locations" style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>Manage Locations</Link>
+                {authToken && onLogout && (
+                    <button
+                        onClick={onLogout}
+                        style={{
+                            background: 'transparent',
+                            border: '1px solid #555',
+                            borderRadius: 6,
+                            color: 'inherit',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            padding: '0.3rem 0.75rem',
+                        }}
+                    >
+                        Sign out
+                    </button>
+                )}
+            </nav>
         </header>
     );
 };
