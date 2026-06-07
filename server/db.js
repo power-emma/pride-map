@@ -8,4 +8,10 @@ const pool = new Pool({
     database: 'pridemap'  
 });
 
+// Without this, a dropped/idle client fires an uncaught 'error' event
+// which Node treats as an unhandled exception and crashes the process.
+pool.on('error', (err) => {
+    console.error('Unexpected error on idle PostgreSQL client:', err);
+});
+
 module.exports = pool;

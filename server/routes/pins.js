@@ -38,8 +38,13 @@ router.get('/', (req, res) => {
 
 // Define a route
 router.get('/all', async (req, res) => {
-    const pins = await getValidPins();
-    res.json(pins);
+    try {
+        const pins = await getValidPins();
+        res.json(pins);
+    } catch (error) {
+        console.error('Error in GET /pins/all:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 

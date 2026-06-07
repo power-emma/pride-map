@@ -4,6 +4,16 @@ const cors = require('cors');
 app.use(cors());
 app.use(express.json());
 
+// Prevent DB connection drops or other async errors from silently
+// killing the process with no log trace.
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, '— reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+
 app.get('/', (req, res) => {
     res.send('We are Live!');
 });
