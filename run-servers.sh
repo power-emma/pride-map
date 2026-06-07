@@ -180,6 +180,25 @@ server {
         proxy_set_header   X-Real-IP         \$remote_addr;
         proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto \$scheme;
+
+        # Give the Node process a moment to accept the connection before
+        # giving up. If it fails, retry once (catches a race where the
+        # process just restarted and hasn't fully bound yet).
+        proxy_connect_timeout  3s;
+        proxy_read_timeout     30s;
+        proxy_send_timeout     30s;
+        proxy_next_upstream    error timeout http_502 http_503;
+        proxy_next_upstream_tries 2;
+
+        # Return a JSON error instead of nginx's default HTML 502 page
+        # so the React client can parse it consistently.
+        error_page 502 503 504 = @api_down;
+    }
+
+    location @api_down {
+        default_type application/json;
+        add_header   Cache-Control "no-store";
+        return 503 '{"error":"API server is temporarily unavailable. Please try again in a moment."}';
     }
 
     # --- React static build ---
@@ -397,7 +416,7 @@ start_servers
 
 # Watchdog — delegates to watchdog.sh
 
-WATCHDOG_INTERVAL=60   # seconds between health checks
+WATCHDOG_INTERVAL=5    # seconds between health checks
 WATCHDOG_LOG="$LOG_DIR/watchdog.log"
 
 start_watchdog() {
