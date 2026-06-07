@@ -20,6 +20,18 @@ CLIENT_DIST="$CLIENT_DIR/dist"
 SERVER_PORT="${SERVER_PORT:-3001}"
 NGINX_PORT="${NGINX_PORT:-80}"
 
+# ---- PostgreSQL backup config ----------------------------------------
+DB_USER="${DB_USER:-pridemap}"
+DB_NAME="${DB_NAME:-pridemap}"
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
+DB_PASS="${DB_PASS:-Postgres!}"
+BACKUP_DIR="$ROOT_DIR/backups"
+BACKUP_INTERVAL=21600     # seconds — 6 hours
+BACKUP_RETAIN_DAYS=7      # prune dumps older than this many days
+mkdir -p "$BACKUP_DIR"
+# -----------------------------------------------------------------------
+
 # Allow running only the install/build step for testing: ./run-servers.sh --install-only
 INSTALL_ONLY=false
 if [[ "${1:-}" == "--install-only" ]]; then
@@ -282,6 +294,56 @@ if [[ "$INSTALL_ONLY" == true ]]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------------------
+# PostgreSQL backup helpers
+# ---------------------------------------------------------------------------
+
+run_backup() {
+  local ts backup_log outfile
+  ts="$(date +%Y%m%d_%H%M%S)"
+  outfile="$BACKUP_DIR/${DB_NAME}_${ts}.sql.gz"
+  backup_log="$LOG_DIR/backup.log"
+
+  echo "[backup] $(date) — starting pg_dump → $outfile" >> "$backup_log"
+
+  if PGPASSWORD="$DB_PASS" pg_dump \
+        -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" "$DB_NAME" \
+        | gzip > "$outfile" 2>>"$backup_log"; then
+    echo "[backup] $(date) — success: $outfile ($(du -sh "$outfile" | cut -f1))" >> "$backup_log"
+    # Prune dumps older than BACKUP_RETAIN_DAYS
+    find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -mtime +"$BACKUP_RETAIN_DAYS" \
+      -delete 2>>"$backup_log" || true
+    echo "[backup] $(date) — pruned backups older than ${BACKUP_RETAIN_DAYS} days" >> "$backup_log"
+  else
+    echo "[backup] $(date) — FAILED — see $backup_log" >> "$backup_log"
+    rm -f "$outfile"
+  fi
+}
+
+start_backup_loop() {
+  (
+    while true; do
+      sleep "$BACKUP_INTERVAL"
+      run_backup
+    done
+  ) &
+  BACKUP_PID=$!
+  echo "$BACKUP_PID" > "$LOG_DIR/backup.pid"
+  echo "Backup loop started (PID=$BACKUP_PID), interval ${BACKUP_INTERVAL}s ($(( BACKUP_INTERVAL / 3600 ))h), dir: $BACKUP_DIR"
+}
+
+stop_backup_loop() {
+  if [[ -f "$LOG_DIR/backup.pid" ]]; then
+    local bpid
+    bpid=$(cat "$LOG_DIR/backup.pid" 2>/dev/null || true)
+    if [[ -n "$bpid" ]] && kill -0 "$bpid" 2>/dev/null; then
+      echo "Stopping backup loop (PID $bpid)..."
+      kill "$bpid" 2>/dev/null || true
+    fi
+    rm -f "$LOG_DIR/backup.pid"
+  fi
+}
+
 start_node_server() {
   echo "Starting Node server (port $SERVER_PORT)..."
   ( cd "$SERVER_DIR" && PORT="$SERVER_PORT" node server.js ) > "$LOG_DIR/server.log" 2>&1 &
@@ -326,6 +388,7 @@ stop_servers() {
     fi
     rm -f "$LOG_DIR/watchdog.pid"
   fi
+  stop_backup_loop || true
   stop_nginx || true
 }
 
@@ -346,6 +409,8 @@ start_watchdog() {
 }
 
 start_watchdog
+
+start_backup_loop
 
 get_port_for_pid() {
   local pid="$1"
@@ -438,7 +503,8 @@ if [[ "$(nginx_status)" == "not running" ]]; then
 fi
 
 echo
-echo "Logs: $LOG_DIR  (server.log, client-build.log, nginx-access.log, nginx-error.log)"
+echo "Logs: $LOG_DIR  (server.log, client-build.log, nginx-access.log, nginx-error.log, backup.log)"
+echo "Backups: $BACKUP_DIR  (every $(( BACKUP_INTERVAL / 3600 ))h, kept ${BACKUP_RETAIN_DAYS} days)"
 echo "To stop: kill $SERVER_PID || true  (nginx is managed by this script)"
 
 # Interactive control loop
@@ -447,6 +513,7 @@ echo "Control options:"
 echo "  r  -> rebuild client, restart Node server and nginx"
 echo "  s  -> status"
 echo "  l  -> show last 200 lines of all logs"
+echo "  b  -> run a manual backup now"
 echo "  q  -> quit script but leave server running"
 echo "  k  -> quit script and stop server + nginx"
 echo "  h  -> help (show this)"
@@ -469,6 +536,7 @@ while true; do
       build_client || true
       start_servers
       start_watchdog
+      start_backup_loop
       ;;
     s)
       # refresh status
@@ -489,6 +557,16 @@ while true; do
           echo "watchdog: running (PID $wpid), interval ${WATCHDOG_INTERVAL}s"
         else
           echo "watchdog: not running"
+        fi
+      fi
+      if [[ -f "$LOG_DIR/backup.pid" ]]; then
+        bpid=$(cat "$LOG_DIR/backup.pid" 2>/dev/null || true)
+        if [[ -n "$bpid" ]] && kill -0 "$bpid" 2>/dev/null; then
+          local last_backup
+          last_backup=$(ls -t "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null | head -1 || true)
+          echo "backup loop: running (PID $bpid), every $(( BACKUP_INTERVAL / 3600 ))h${last_backup:+, last: $(basename "$last_backup")}"
+        else
+          echo "backup loop: not running"
         fi
       fi
       echo "  → http://localhost:${NGINX_PORT}/      (React app, static build)"
@@ -512,6 +590,14 @@ while true; do
       echo
       echo "---- nginx access log (last 200 lines) ----"
       tail -n 200 "$LOG_DIR/nginx-access.log" 2>/dev/null || echo "(no nginx access log yet)"
+      echo
+      echo "---- backup log (last 50 lines) ----"
+      tail -n 50 "$LOG_DIR/backup.log" 2>/dev/null || echo "(no backup log yet)"
+      ;;
+    b)
+      echo "Running manual backup now..."
+      run_backup
+      echo "Backup complete — see $LOG_DIR/backup.log"
       ;;
     q)
       echo "Exiting script and leaving server running. Node PID: $(cat "$LOG_DIR/server.pid" 2>/dev/null || echo 'n/a')"
@@ -524,7 +610,7 @@ while true; do
       exit 0
       ;;
     h|help)
-      echo "Commands: r rebuild+restart, s status, l logs, q quit(leave running), k quit+kill, h help"
+      echo "Commands: r rebuild+restart, s status, l logs, b manual backup, q quit(leave running), k quit+kill, h help"
       ;;
     "")
       ;;
