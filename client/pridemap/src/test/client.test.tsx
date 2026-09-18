@@ -38,6 +38,7 @@ import Header from '../components/Header';
 import CardComponent from '../CardComponent';
 import CardDeck from '../CardDeck';
 import MarkerComponent from '../MarkerComponent';
+import LocationSidebar from '../components/LocationSidebar';
 import App from '../App';
 
 // ─── Header ──────────────────────────────────────────────────────────────────
@@ -243,6 +244,34 @@ describe('MarkerComponent', () => {
         render(<MarkerComponent name="Capital Pride" position={[45.42, -75.68]} />);
         expect(screen.getByTestId('marker')).toBeInTheDocument();
         expect(screen.getByText('Capital Pride')).toBeInTheDocument();
+    });
+});
+
+describe('LocationSidebar', () => {
+    it('shows the selected location details and allows closing', async () => {
+        const user = userEvent.setup();
+        const onClose = vi.fn();
+
+        render(
+            <LocationSidebar
+                location={{
+                    name: 'Capital Pride',
+                    categories: ['Community Organisations', 'Queer Businesses'],
+                    description: 'Ottawa Pride festival organisation.',
+                    address: '403 Bank St, Ottawa, ON',
+                    url: 'https://capitalpride.ca/'
+                }}
+                onClose={onClose}
+            />
+        );
+
+        expect(screen.getByText('Capital Pride')).toBeInTheDocument();
+        expect(screen.getByText('Community Organisations')).toBeInTheDocument();
+        expect(screen.getByText('Ottawa Pride festival organisation.')).toBeInTheDocument();
+        expect(screen.getByText('403 Bank St, Ottawa, ON')).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: /close location details/i }));
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 });
 

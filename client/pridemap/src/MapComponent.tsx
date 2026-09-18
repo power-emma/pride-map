@@ -20,9 +20,10 @@ const MapUpdater = ({ selectedLocation }: { selectedLocation: {lat: number, lng:
     return null;
 };
 
-const MapComponent = ({ selectedLocation, categoryFilter }: {
+const MapComponent = ({ selectedLocation, categoryFilter, onMarkerSelect }: {
     selectedLocation?: {lat: number, lng: number, name: string} | null,
     categoryFilter?: string | null,
+    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null }) => void,
 }) => {
     const defaultCenter: LatLngExpression = [45.42060673930713, -75.68282689676013]; // uOttawa
 
@@ -49,9 +50,11 @@ const MapComponent = ({ selectedLocation, categoryFilter }: {
                 />
 
                 {/* Leaflet Maps Pin format */}
-                <MarkerContainer selectedLocation={selectedLocation || undefined} categoryFilter={categoryFilter ?? null}> 
-                    
-                </MarkerContainer>
+                <MarkerContainer
+                    selectedLocation={selectedLocation || undefined}
+                    categoryFilter={categoryFilter ?? null}
+                    onMarkerSelect={onMarkerSelect}
+                />
                 
                 <MapUpdater selectedLocation={selectedLocation || null} />
             </MapContainer>
