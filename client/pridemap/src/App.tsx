@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MapComponent from './MapComponent';
 import Header from './components/Header';
@@ -21,7 +21,6 @@ function App() {
 	const [selectedDetails, setSelectedDetails] = useState<LocationSidebarItem | null>(null);
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 	const [authToken, setAuthToken] = useState<string | null>(getStoredToken);
-	const mapRef = useRef<HTMLDivElement>(null);
 
 	const handleLocationSelect = (lat: number, lng: number, name: string, details?: Partial<LocationSidebarItem>) => {
 		setSelectedLocation({lat, lng, name});
@@ -32,8 +31,6 @@ function App() {
 			address: details?.address ?? null,
 			url: details?.url ?? null,
 		});
-		// Scroll to map
-		mapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	};
 
 	function handleLogin(token: string) {
@@ -56,7 +53,7 @@ function App() {
 						<>
 							<div className="home-page-layout">
 								<LocationSidebar location={selectedDetails} onClose={() => setSelectedDetails(null)} />
-								<div ref={mapRef} className="map-wrapper">
+								<div className="map-wrapper">
 									<MapComponent
 										selectedLocation={selectedLocation}
 										categoryFilter={categoryFilter}
