@@ -40,6 +40,57 @@ import CardDeck from '../CardDeck';
 import MarkerComponent from '../MarkerComponent';
 import LocationSidebar from '../components/LocationSidebar';
 import App from '../App';
+import CreateLocationPage from '../CreateLocationPage';
+
+// ─── CreateLocationPage geocoding ───────────────────────────────────────────
+describe('CreateLocationPage', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.startsWith('/api/categories')) {
+                return {
+                    ok: true,
+                    json: async () => [],
+                } as Response;
+            }
+            if (url.includes('nominatim.openstreetmap.org')) {
+                return {
+                    ok: true,
+                    json: async () => [
+                        { display_name: '123 Main St, Ottawa, ON, Canada', lat: '45.421', lon: '-75.690' },
+                        { display_name: '456 Main St, Ottawa, ON, Canada', lat: '45.422', lon: '-75.691' },
+                    ],
+                } as Response;
+            }
+            return { ok: true, json: async () => ({}) } as Response;
+        }));
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('geocodes an entered address into latitude and longitude', async () => {
+        const user = userEvent.setup();
+        render(
+            <MemoryRouter>
+                <CreateLocationPage />
+            </MemoryRouter>
+        );
+
+        const addressInput = screen.getByPlaceholderText('Optional address');
+        await user.type(addressInput, '123 Main St, Ottawa, ON');
+        await user.click(screen.getByRole('button', { name: /geocode/i }));
+
+        const candidate = await screen.findByRole('button', { name: /123 main st, ottawa, on, canada/i });
+        await user.click(candidate);
+
+        await waitFor(() => {
+            expect(screen.getByPlaceholderText('e.g. 45.421')).toHaveValue('45.421');
+            expect(screen.getByPlaceholderText('e.g. -75.690')).toHaveValue('-75.690');
+        });
+    });
+});
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 describe('Header', () => {
