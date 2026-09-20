@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ─── Leaflet / react-leaflet mocks ───────────────────────────────────────────
@@ -248,30 +248,36 @@ describe('MarkerComponent', () => {
 });
 
 describe('LocationSidebar', () => {
-    it('shows the selected location details and allows closing', async () => {
-        const user = userEvent.setup();
+    it('shows the selected location details and allows closing', () => {
+        vi.useFakeTimers();
         const onClose = vi.fn();
 
-        render(
-            <LocationSidebar
-                location={{
-                    name: 'Capital Pride',
-                    categories: ['Community Organisations', 'Queer Businesses'],
-                    description: 'Ottawa Pride festival organisation.',
-                    address: '403 Bank St, Ottawa, ON',
-                    url: 'https://capitalpride.ca/'
-                }}
-                onClose={onClose}
-            />
-        );
+        try {
+            render(
+                <LocationSidebar
+                    location={{
+                        name: 'Capital Pride',
+                        categories: ['Community Organisations', 'Queer Businesses'],
+                        description: 'Ottawa Pride festival organisation.',
+                        address: '403 Bank St, Ottawa, ON',
+                        url: 'https://capitalpride.ca/'
+                    }}
+                    onClose={onClose}
+                />
+            );
 
-        expect(screen.getByText('Capital Pride')).toBeInTheDocument();
-        expect(screen.getByText('Community Organisations')).toBeInTheDocument();
-        expect(screen.getByText('Ottawa Pride festival organisation.')).toBeInTheDocument();
-        expect(screen.getByText('403 Bank St, Ottawa, ON')).toBeInTheDocument();
+            expect(screen.getByText('Capital Pride')).toBeInTheDocument();
+            expect(screen.getByText('Community Organisations')).toBeInTheDocument();
+            expect(screen.getByText('Ottawa Pride festival organisation.')).toBeInTheDocument();
+            expect(screen.getByText('403 Bank St, Ottawa, ON')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: /close location details/i }));
-        expect(onClose).toHaveBeenCalledTimes(1);
+            fireEvent.click(screen.getByRole('button', { name: /close location details/i }));
+            vi.runOnlyPendingTimers();
+
+            expect(onClose).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 
