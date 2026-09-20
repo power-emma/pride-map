@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MapComponent from './MapComponent';
 import Header from './components/Header';
 import CategoryFilter from './components/CategoryFilter';
+import LocationSidebar, { type LocationSidebarItem } from './components/LocationSidebar';
 import './App.css'
 import CardDeck from './CardDeck';
 import CreateLocationPage from './CreateLocationPage.tsx';
@@ -17,14 +18,19 @@ function getStoredToken(): string | null {
 
 function App() {
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
+	const [selectedDetails, setSelectedDetails] = useState<LocationSidebarItem | null>(null);
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 	const [authToken, setAuthToken] = useState<string | null>(getStoredToken);
-	const mapRef = useRef<HTMLDivElement>(null);
 
-	const handleLocationSelect = (lat: number, lng: number, name: string) => {
+	const handleLocationSelect = (lat: number, lng: number, name: string, details?: Partial<LocationSidebarItem>) => {
 		setSelectedLocation({lat, lng, name});
-		// Scroll to map
-		mapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		setSelectedDetails({
+			name,
+			categories: details?.categories ?? [],
+			description: details?.description ?? null,
+			address: details?.address ?? null,
+			url: details?.url ?? null,
+		});
 	};
 
 	function handleLogin(token: string) {
@@ -45,8 +51,15 @@ function App() {
 					path="/"
 					element={
 						<>
-							<div ref={mapRef} className="map-wrapper">
-								<MapComponent selectedLocation={selectedLocation} categoryFilter={categoryFilter} />
+							<div className="home-page-layout">
+								<LocationSidebar location={selectedDetails} onClose={() => setSelectedDetails(null)} />
+								<div className="map-wrapper">
+									<MapComponent
+										selectedLocation={selectedLocation}
+										categoryFilter={categoryFilter}
+										onMarkerSelect={handleLocationSelect}
+									/>
+								</div>
 							</div>
 							<CategoryFilter selected={categoryFilter} onChange={setCategoryFilter} />
 							<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} />
