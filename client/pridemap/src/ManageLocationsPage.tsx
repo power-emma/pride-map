@@ -374,25 +374,40 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         )}
 
         {geocodeResults.length > 0 && (
-          <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.25rem' }}>
-            {geocodeResults.map((result) => (
-              <button
-                key={`${result.displayName}-${result.latitude}-${result.longitude}`}
-                type="button"
-                onClick={() => handleSelectGeocodeResult(result)}
-                style={{
-                  textAlign: 'left',
-                  padding: '0.5rem 0.7rem',
-                  borderRadius: 8,
-                  border: '1px solid #444',
-                  background: '#1f1f1f',
-                  color: 'inherit',
-                  cursor: 'pointer',
-                }}
-              >
-                {result.displayName}
-              </button>
-            ))}
+          <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.25rem' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8 }}>Choose a matching address</div>
+            <div
+              style={{
+                display: 'grid',
+                gap: '0.45rem',
+                padding: '0.5rem',
+                border: '1px solid #444',
+                borderRadius: 10,
+                background: '#171717',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+              }}
+            >
+              {geocodeResults.map((result) => (
+                <button
+                  key={`${result.displayName}-${result.latitude}-${result.longitude}`}
+                  type="button"
+                  onClick={() => handleSelectGeocodeResult(result)}
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.7rem 0.8rem',
+                    borderRadius: 8,
+                    border: '1px solid #4a4a4a',
+                    background: '#202020',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    lineHeight: 1.5,
+                    transition: 'border-color 0.15s ease, background 0.15s ease',
+                  }}
+                >
+                  {result.displayName}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
