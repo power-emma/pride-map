@@ -4,9 +4,10 @@ import { useMap } from "react-leaflet";
 import UserMarkerComponent from './UserMarkerComponent';
 import MarkerComponent from './MarkerComponent';
 
-const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, onMarkerSelect }: {
+const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, searchQuery = '', onMarkerSelect }: {
     selectedLocation?: {lat: number, lng: number, name: string},
     categoryFilter: string | null,
+    searchQuery?: string,
     onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null }) => void,
 }) => {
     const map = useMap();
@@ -22,9 +23,12 @@ const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, 
         .catch(error => console.error(error));
     }, []);
 
-    const visiblePins = categoryFilter
-        ? pins.filter(pin => pin.categories.includes(categoryFilter))
-        : pins;
+    const query = searchQuery.trim().toLowerCase();
+    const visiblePins = pins.filter(pin => {
+        const matchesCategory = !categoryFilter || pin.categories.includes(categoryFilter);
+        const matchesQuery = !query || pin.name.toLowerCase().includes(query);
+        return matchesCategory && matchesQuery;
+    });
 
     const dataToMarkers = visiblePins.map((pin, index) => {
         return (

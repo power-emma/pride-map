@@ -11,10 +11,11 @@ interface Card {
     categories: string[];
 }
 
-const CardDeck = ({title, onLocationSelect, categoryFilter}: {
+const CardDeck = ({title, onLocationSelect, categoryFilter, searchQuery = ''}: {
     title: string,
     onLocationSelect?: (lat: number, lng: number, name: string) => void,
     categoryFilter?: string | null,
+    searchQuery?: string,
 }) => {
     const [cards, setCards] = useState<Card[]>([]);
 
@@ -28,9 +29,12 @@ const CardDeck = ({title, onLocationSelect, categoryFilter}: {
             .catch(error => console.error('Error loading cards:', error));
     }, []);
 
-    const visibleCards = categoryFilter
-        ? cards.filter(card => card.categories.includes(categoryFilter))
-        : cards;
+    const query = searchQuery.trim().toLowerCase();
+    const visibleCards = cards.filter(card => {
+        const matchesCategory = !categoryFilter || card.categories.includes(categoryFilter);
+        const matchesQuery = !query || card.name.toLowerCase().includes(query);
+        return matchesCategory && matchesQuery;
+    });
 
     return (
         <div style={{ justifyContent: 'center', alignItems: 'center' }}>

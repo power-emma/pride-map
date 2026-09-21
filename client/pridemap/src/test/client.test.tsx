@@ -19,6 +19,7 @@ vi.mock('react-leaflet', () => ({
     Marker: ({ children }: { children: React.ReactNode }) => <div data-testid="marker">{children}</div>,
     Popup: ({ children }: { children: React.ReactNode }) => <div data-testid="popup">{children}</div>,
     CircleMarker: ({ children }: { children: React.ReactNode }) => <div data-testid="circle-marker">{children}</div>,
+    ZoomControl: () => <div data-testid="zoom-control" />,
     useMap: vi.fn(() => ({
         flyTo: vi.fn(),
         locate: vi.fn().mockReturnThis(),
@@ -45,19 +46,16 @@ import App from '../App';
 describe('Header', () => {
     it('renders the app title', () => {
         render(<MemoryRouter><Header /></MemoryRouter>);
-        expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
+        expect(screen.getByText('Queer Atlas')).toBeInTheDocument();
     });
 
-    it('renders 6 pride-flag pin SVGs in the logo', () => {
-        const { container } = render(<MemoryRouter><Header /></MemoryRouter>);
-        // The logo group contains one <svg> per pride colour
-        const svgs = container.querySelectorAll('header svg');
-        expect(svgs.length).toBe(6);
-    });
-
-    it('renders the nav links', () => {
+    it('links the title back home', () => {
         render(<MemoryRouter><Header /></MemoryRouter>);
-        expect(screen.getByRole('link', { name: /home/i })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Queer Atlas' })).toHaveAttribute('href', '/');
+    });
+
+    it('renders the manage locations button', () => {
+        render(<MemoryRouter><Header /></MemoryRouter>);
         expect(screen.getByRole('link', { name: /manage locations/i })).toBeInTheDocument();
     });
 });
@@ -240,10 +238,9 @@ describe('CardDeck', () => {
 
 // ─── MarkerComponent ─────────────────────────────────────────────────────────
 describe('MarkerComponent', () => {
-    it('renders a marker with the location name in its popup', () => {
+    it('renders a marker for the location', () => {
         render(<MarkerComponent name="Capital Pride" position={[45.42, -75.68]} />);
         expect(screen.getByTestId('marker')).toBeInTheDocument();
-        expect(screen.getByText('Capital Pride')).toBeInTheDocument();
     });
 });
 
@@ -295,7 +292,7 @@ describe('App', () => {
 
     it('renders the Header', async () => {
         render(<MemoryRouter><App /></MemoryRouter>);
-        expect(screen.getByText('Welcome to Pride Map')).toBeInTheDocument();
+        expect(screen.getByText('Queer Atlas')).toBeInTheDocument();
     });
 
     it('renders the map container', async () => {

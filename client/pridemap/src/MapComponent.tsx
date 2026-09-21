@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, ZoomControl, useMap } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect } from 'react';
@@ -20,9 +20,10 @@ const MapUpdater = ({ selectedLocation }: { selectedLocation: {lat: number, lng:
     return null;
 };
 
-const MapComponent = ({ selectedLocation, categoryFilter, onMarkerSelect }: {
+const MapComponent = ({ selectedLocation, categoryFilter, searchQuery, onMarkerSelect }: {
     selectedLocation?: {lat: number, lng: number, name: string} | null,
     categoryFilter?: string | null,
+    searchQuery?: string,
     onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null }) => void,
 }) => {
     const defaultCenter: LatLngExpression = [45.42060673930713, -75.68282689676013]; // uOttawa
@@ -43,16 +44,18 @@ const MapComponent = ({ selectedLocation, categoryFilter, onMarkerSelect }: {
                 }
             `}</style>
 
-            <MapContainer center={defaultCenter} zoom={14} scrollWheelZoom={true} style={{ height: '80dvh', minHeight: '300px', width: '100%' }}>
+            <MapContainer center={defaultCenter} zoom={14} scrollWheelZoom={true} zoomControl={false} style={{ height: '100%', width: '100%' }}>
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
+                <ZoomControl position="bottomright" />
 
                 {/* Leaflet Maps Pin format */}
                 <MarkerContainer
                     selectedLocation={selectedLocation || undefined}
                     categoryFilter={categoryFilter ?? null}
+                    searchQuery={searchQuery ?? ''}
                     onMarkerSelect={onMarkerSelect}
                 />
                 

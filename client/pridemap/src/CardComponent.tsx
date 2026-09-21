@@ -64,7 +64,7 @@ const CardComponent = ({
                                 color: '#ffffff',
                                 backgroundColor: colour.bg,
                                 border: `1px solid ${colour.border}`,
-                                borderRadius: '999px',
+                                borderRadius: '8px',
                                 padding: '2px 8px',
                                 whiteSpace: 'nowrap',
                                 letterSpacing: '0.02em',

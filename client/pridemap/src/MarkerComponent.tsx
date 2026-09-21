@@ -1,4 +1,4 @@
-import { Marker, Popup } from "react-leaflet";
+import { Marker } from "react-leaflet";
 import L from "leaflet";
 import { CATEGORY_COLOURS, DEFAULT_COLOUR } from "./categoryColours";
 
@@ -77,9 +77,7 @@ const MarkerComponent = ({ name, position, categories = [], description, address
     };
 
     return (
-        <Marker position={position} icon={icon} eventHandlers={{ click: handleClick }}>
-            <Popup>{name}</Popup>
-        </Marker>
+        <Marker position={position} icon={icon} eventHandlers={{ click: handleClick }} />
     );
 }
 
