@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { generateSpoofPins, resolveSpoofCount } = require('../spoofPins');
 
 // Query locations from the database and convert to pin format.
 // Throws on DB error so callers can return a proper 500 instead of
@@ -42,6 +43,14 @@ router.get('/', (req, res) => {
 // Define a route
 router.get('/all', async (req, res) => {
     try {
+        // Test mode: when spoofing is enabled, return a large batch of randomly
+        // generated pins to stress the server and client instead of the DB rows.
+        const spoofCount = resolveSpoofCount(req);
+        if (spoofCount > 0) {
+            console.log(`GET /pins/all — spoofing ${spoofCount} pins (test mode)`);
+            return res.json(generateSpoofPins(spoofCount));
+        }
+
         const pins = await getValidPins();
         res.json(pins);
     } catch (error) {

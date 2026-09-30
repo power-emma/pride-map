@@ -74,6 +74,49 @@ describe('GET /pins', () => {
     });
 });
 
+describe('GET /pins/all — spoof test mode', () => {
+    it('returns the requested number of spoofed pins via ?spoof=N', async () => {
+        const res = await request(app).get('/pins/all?spoof=250');
+        expect(res.statusCode).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+        expect(res.body).toHaveLength(250);
+        // Spoofing should not hit the database.
+        expect(pool.query).not.toHaveBeenCalled();
+    });
+
+    it('generates well-formed pins with sane world coordinates', async () => {
+        const res = await request(app).get('/pins/all?spoof=100');
+        for (const pin of res.body) {
+            expect(pin).toHaveProperty('name');
+            expect(pin.position).toHaveLength(2);
+            const [lat, lng] = pin.position;
+            expect(lat).toBeGreaterThanOrEqual(-90);
+            expect(lat).toBeLessThanOrEqual(90);
+            expect(lng).toBeGreaterThanOrEqual(-180);
+            expect(lng).toBeLessThanOrEqual(180);
+            expect(Array.isArray(pin.categories)).toBe(true);
+            expect(pin.categories.length).toBeGreaterThan(0);
+        }
+    });
+
+    it('honours the PIN_SPOOF_COUNT env var', async () => {
+        process.env.PIN_SPOOF_COUNT = '42';
+        try {
+            const res = await request(app).get('/pins/all');
+            expect(res.body).toHaveLength(42);
+            expect(pool.query).not.toHaveBeenCalled();
+        } finally {
+            delete process.env.PIN_SPOOF_COUNT;
+        }
+    });
+
+    it('falls back to the database when spoofing is off', async () => {
+        const res = await request(app).get('/pins/all');
+        expect(res.statusCode).toBe(200);
+        expect(pool.query).toHaveBeenCalled();
+    });
+});
+
 describe('GET /cards', () => {
     it('should return 200 and an array of all cards', async () => {
         const res = await request(app).get('/cards');
