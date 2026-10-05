@@ -10,6 +10,11 @@ type Pin = { name: string, position: [number, number], categories: string[], des
 // Grid cell size in screen pixels. Pins in the same cell are always grouped.
 const CLUSTER_RADIUS_PX = 45;
 
+// A group of this many pins or fewer is never drawn as a cluster bubble — its
+// members are rendered as individual markers instead. Only groups larger than
+// this collapse into a single cluster marker.
+const UNCLUSTER_MAX = 3;
+
 // The most a single cluster may span on screen, in pixels. Chaining stops at
 // this cap, so a cluster can never swallow a wide dense area — its *geographic*
 // size therefore scales with zoom on its own: continent-sized blobs at world
@@ -119,12 +124,16 @@ const clusterPins = (pins: Pin[], map: ReturnType<typeof useMap>): ClusterEntry[
     // Aggregate each component: count, centroid, bounding box and category set.
     // Bounds are kept as running min/max corners rather than a per-member array,
     // so a giant low-zoom cluster costs O(1) memory instead of O(members).
+    // `members` holds the actual pins, but only while a group is still small
+    // enough to possibly stay unclustered — it is capped at UNCLUSTER_MAX, so a
+    // giant low-zoom cluster still costs O(1) memory. Once a group exceeds the
+    // cap we stop collecting members and rely on the running aggregates instead.
     type Agg = {
         count: number,
         sumLat: number, sumLng: number,
         minLat: number, maxLat: number, minLng: number, maxLng: number,
         categories: Set<string>,
-        sample: Pin,
+        members: Pin[],
     };
     const groups = new Map<number, Agg>();
     for (let i = 0; i < pts.length; i++) {
@@ -133,10 +142,11 @@ const clusterPins = (pins: Pin[], map: ReturnType<typeof useMap>): ClusterEntry[
         const root = find(i);
         let g = groups.get(root);
         if (!g) {
-            g = { count: 0, sumLat: 0, sumLng: 0, minLat: lat, maxLat: lat, minLng: lng, maxLng: lng, categories: new Set(), sample: pin };
+            g = { count: 0, sumLat: 0, sumLng: 0, minLat: lat, maxLat: lat, minLng: lng, maxLng: lng, categories: new Set(), members: [] };
             groups.set(root, g);
         }
         g.count++;
+        if (g.members.length < UNCLUSTER_MAX) g.members.push(pin);
         g.sumLat += lat; g.sumLng += lng;
         if (lat < g.minLat) g.minLat = lat;
         if (lat > g.maxLat) g.maxLat = lat;
@@ -147,8 +157,9 @@ const clusterPins = (pins: Pin[], map: ReturnType<typeof useMap>): ClusterEntry[
 
     const result: ClusterEntry[] = [];
     for (const g of groups.values()) {
-        if (g.count === 1) {
-            result.push({ type: 'single', pin: g.sample });
+        if (g.count <= UNCLUSTER_MAX) {
+            // Small group: render each member on its own rather than clustering.
+            for (const pin of g.members) result.push({ type: 'single', pin });
         } else {
             result.push({
                 type: 'cluster',

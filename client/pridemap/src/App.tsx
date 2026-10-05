@@ -77,7 +77,6 @@ function App() {
 									onClick={() => setServicesOpen(open => !open)}
 									aria-expanded={servicesOpen}
 								>
-									<span className="see-all-btn__icon" aria-hidden="true">☰</span>
 									See all
 								</button>
 							)}

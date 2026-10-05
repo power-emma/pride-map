@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
+import TurnstileWidget from './components/TurnstileWidget';
 
 type Category = { id: number; name: string };
 
@@ -16,6 +17,10 @@ function toNullableNumber(value: string) {
   return Number.isFinite(num) ? num : NaN;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 export default function CreateLocationPage() {
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -23,12 +28,16 @@ export default function CreateLocationPage() {
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [url, setUrl] = useState('');
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
+
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -63,13 +72,27 @@ export default function CreateLocationPage() {
   }, []);
 
   const canSubmit = useMemo(() => {
-    return name.trim().length > 0 && !submitting;
-  }, [name, submitting]);
+    return (
+      name.trim().length > 0 &&
+      isValidEmail(email) &&
+      captchaToken.length > 0 &&
+      !submitting
+    );
+  }, [name, email, captchaToken, submitting]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
+
+    if (!isValidEmail(email)) {
+      setSubmitError('Please enter a valid email address.');
+      return;
+    }
+    if (!captchaToken) {
+      setSubmitError('Please complete the CAPTCHA.');
+      return;
+    }
 
     const lat = toNullableNumber(latitude);
     const lng = toNullableNumber(longitude);
@@ -80,17 +103,19 @@ export default function CreateLocationPage() {
 
     const payload = {
       name: name.trim(),
+      submitter_email: email.trim(),
       description: toNullIfEmpty(description),
       address: toNullIfEmpty(address),
       latitude: lat,
       longitude: lng,
       url: toNullIfEmpty(url),
       category_ids: categoryIds,
+      captchaToken,
     };
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/locations', {
+      const res = await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -101,32 +126,89 @@ export default function CreateLocationPage() {
         const message =
           (json && typeof json === 'object' && 'error' in json && typeof (json as any).error === 'string'
             ? (json as any).error
-            : `Failed to create location (${res.status})`);
+            : `Failed to submit business (${res.status})`);
         setSubmitError(message);
+        // Token is single-use; force the user to solve a fresh challenge.
+        setCaptchaToken('');
+        setCaptchaResetSignal((n) => n + 1);
         return;
       }
 
-      setSubmitSuccess('Location created.');
+      setSubmitSuccess(
+        (json && json.message) ||
+          'Thank you! Your submission is pending admin approval.'
+      );
       setName('');
+      setEmail('');
       setDescription('');
       setAddress('');
       setLatitude('');
       setLongitude('');
       setUrl('');
       setCategoryIds([]);
-
-      // Small UX: return home after a brief beat
-      setTimeout(() => navigate('/'), 400);
+      setCaptchaToken('');
+      setCaptchaResetSignal((n) => n + 1);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to create location');
+      setSubmitError(err instanceof Error ? err.message : 'Failed to submit business');
+      setCaptchaToken('');
+      setCaptchaResetSignal((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
   }
 
+  function resetForAnother() {
+    setSubmitSuccess(null);
+    setSubmitError(null);
+  }
+
+  if (submitSuccess) {
+    return (
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: '1rem' }}>
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            display: 'grid',
+            gap: '0.75rem',
+            justifyItems: 'center',
+            textAlign: 'center',
+            padding: '2.5rem 1.5rem',
+            border: '1px solid #4caf50',
+            borderRadius: 14,
+            marginTop: '1.5rem',
+          }}
+        >
+          <h2 style={{ margin: 0 }}>Submission received!</h2>
+          <p style={{ margin: 0, maxWidth: 460, opacity: 0.85 }}>{submitSuccess}</p>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              style={{ padding: '0.65rem 1.1rem', borderRadius: 10, border: '1px solid #444', fontWeight: 700, cursor: 'pointer' }}
+            >
+              Back to the map
+            </button>
+            <button
+              type="button"
+              onClick={resetForAnother}
+              style={{ padding: '0.65rem 1.1rem', borderRadius: 10, border: '1px solid #444', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Submit another business
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '1rem' }}>
-      <h2 style={{ margin: '0 0 0.75rem 0' }}>Add a Location</h2>
+      <h2 style={{ margin: '0 0 0.25rem 0' }}>Submit a Business</h2>
+      <p style={{ marginTop: 0, opacity: 0.8 }}>
+        Suggest an LGBTQ+ business or service for the map. Submissions are reviewed
+        by an admin before they appear.
+      </p>
 
       {categoriesError && (
         <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem' }}>
@@ -140,22 +222,31 @@ export default function CreateLocationPage() {
         </div>
       )}
 
-      {submitSuccess && (
-        <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem' }}>
-          {submitSuccess}
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '0.75rem' }}>
         <label style={{ display: 'grid', gap: '0.35rem' }}>
-          <span style={{ fontWeight: 600 }}>Name *</span>
+          <span style={{ fontWeight: 600 }}>Business name *</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            placeholder="Location name"
+            placeholder="Business name"
             style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
           />
+        </label>
+
+        <label style={{ display: 'grid', gap: '0.35rem' }}>
+          <span style={{ fontWeight: 600 }}>Your email *</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="you@example.com"
+            style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
+          />
+          <span style={{ fontSize: 13, opacity: 0.7 }}>
+            So we can follow up about your listing. Not shown publicly.
+          </span>
         </label>
 
         <div style={{ display: 'grid', gap: '0.35rem' }}>
@@ -225,6 +316,11 @@ export default function CreateLocationPage() {
           />
         </label>
 
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <span style={{ fontWeight: 600 }}>Verify you're human *</span>
+          <TurnstileWidget onToken={setCaptchaToken} resetSignal={captchaResetSignal} />
+        </div>
+
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.25rem' }}>
           <button
             type="submit"
@@ -237,7 +333,7 @@ export default function CreateLocationPage() {
               cursor: canSubmit ? 'pointer' : 'not-allowed',
             }}
           >
-            {submitting ? 'Creating…' : 'Create Location'}
+            {submitting ? 'Submitting…' : 'Submit for Review'}
           </button>
           <button
             type="button"
@@ -251,4 +347,3 @@ export default function CreateLocationPage() {
     </div>
   );
 }
-

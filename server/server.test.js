@@ -293,3 +293,144 @@ describe('DELETE /locations/:id', () => {
         expect(res.body).toHaveProperty('error');
     });
 });
+
+describe('Submissions', () => {
+    // Stub Cloudflare Turnstile's siteverify endpoint so tests never hit the network.
+    function mockTurnstile(success) {
+        global.fetch = jest.fn(() =>
+            Promise.resolve({ json: () => Promise.resolve({ success }) })
+        );
+    }
+
+    afterEach(() => {
+        if (global.fetch && global.fetch.mockClear) global.fetch.mockClear();
+    });
+
+    const validBody = {
+        name: 'Rainbow Cafe',
+        submitter_email: 'owner@example.com',
+        captchaToken: 'dummy-token',
+        category_ids: [],
+    };
+
+    describe('POST /submissions (public)', () => {
+        it('should return 400 when the CAPTCHA fails', async () => {
+            mockTurnstile(false);
+            const res = await request(app).post('/submissions').send(validBody);
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toHaveProperty('error');
+        });
+
+        it('should return 400 when the email is invalid', async () => {
+            mockTurnstile(true);
+            const res = await request(app)
+                .post('/submissions')
+                .send({ ...validBody, submitter_email: 'not-an-email' });
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toHaveProperty('error');
+        });
+
+        it('should return 400 when the name is missing', async () => {
+            mockTurnstile(true);
+            const res = await request(app)
+                .post('/submissions')
+                .send({ ...validBody, name: '' });
+            expect(res.statusCode).toBe(400);
+        });
+
+        it('should accept a valid submission then rate-limit the next one', async () => {
+            mockTurnstile(true);
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 42 }], rowCount: 1 });
+
+            const first = await request(app).post('/submissions').send(validBody);
+            expect(first.statusCode).toBe(201);
+            expect(first.body).toMatchObject({ id: 42, status: 'pending' });
+
+            // Second request from the same IP within 10 minutes is rejected.
+            const second = await request(app).post('/submissions').send(validBody);
+            expect(second.statusCode).toBe(429);
+            expect(second.headers).toHaveProperty('retry-after');
+        });
+    });
+
+    describe('Admin submission endpoints require auth', () => {
+        it('GET /submissions should return 401 without a token', async () => {
+            const res = await request(app).get('/submissions');
+            expect(res.statusCode).toBe(401);
+        });
+
+        it('POST /submissions/:id/approve should return 401 without a token', async () => {
+            const res = await request(app).post('/submissions/1/approve');
+            expect(res.statusCode).toBe(401);
+        });
+
+        it('POST /submissions/:id/reject should return 401 without a token', async () => {
+            const res = await request(app).post('/submissions/1/reject');
+            expect(res.statusCode).toBe(401);
+        });
+
+        it('GET /submissions should return the pending queue with a valid token', async () => {
+            pool.query.mockResolvedValueOnce({
+                rows: [{ id: 1, name: 'Rainbow Cafe', status: 'pending', category_ids: [] }],
+                rowCount: 1,
+            });
+            const res = await request(app)
+                .get('/submissions')
+                .set('Authorization', `Bearer ${makeToken()}`);
+            expect(res.statusCode).toBe(200);
+            expect(Array.isArray(res.body)).toBe(true);
+        });
+
+        it('POST /submissions/:id/reject should return 400 for an invalid id', async () => {
+            const res = await request(app)
+                .post('/submissions/abc/reject')
+                .set('Authorization', `Bearer ${makeToken()}`);
+            expect(res.statusCode).toBe(400);
+        });
+
+        it('PUT /submissions/:id should return 401 without a token', async () => {
+            const res = await request(app)
+                .put('/submissions/1')
+                .send({ name: 'X', submitter_email: 'a@b.co' });
+            expect(res.statusCode).toBe(401);
+        });
+
+        it('PUT /submissions/:id should return 400 when name is missing', async () => {
+            const res = await request(app)
+                .put('/submissions/1')
+                .set('Authorization', `Bearer ${makeToken()}`)
+                .send({ name: '', submitter_email: 'a@b.co' });
+            expect(res.statusCode).toBe(400);
+        });
+
+        it('PUT /submissions/:id should return 400 for an invalid email', async () => {
+            const res = await request(app)
+                .put('/submissions/1')
+                .set('Authorization', `Bearer ${makeToken()}`)
+                .send({ name: 'Rainbow Cafe', submitter_email: 'nope' });
+            expect(res.statusCode).toBe(400);
+        });
+
+        it('PUT /submissions/:id should update a pending submission', async () => {
+            pool.query.mockResolvedValueOnce({
+                rows: [{ id: 1, name: 'Edited Cafe', submitter_email: 'a@b.co', status: 'pending', category_ids: [2] }],
+                rowCount: 1,
+            });
+            const res = await request(app)
+                .put('/submissions/1')
+                .set('Authorization', `Bearer ${makeToken()}`)
+                .send({ name: 'Edited Cafe', submitter_email: 'a@b.co', category_ids: [2] });
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toMatchObject({ id: 1, name: 'Edited Cafe' });
+        });
+
+        it('PUT /submissions/:id should return 404 when no pending submission matches', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+            const res = await request(app)
+                .put('/submissions/9999')
+                .set('Authorization', `Bearer ${makeToken()}`)
+                .send({ name: 'Edited Cafe', submitter_email: 'a@b.co' });
+            expect(res.statusCode).toBe(404);
+        });
+    });
+});

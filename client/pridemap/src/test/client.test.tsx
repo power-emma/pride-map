@@ -54,9 +54,28 @@ describe('Header', () => {
         expect(screen.getByRole('link', { name: 'Queer Atlas' })).toHaveAttribute('href', '/');
     });
 
-    it('renders the manage locations button', () => {
+    it('hides the nav links until the hamburger menu is opened', () => {
         render(<MemoryRouter><Header /></MemoryRouter>);
+        expect(screen.queryByRole('link', { name: /manage locations/i })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument();
+    });
+
+    it('shows "Sign in" (not Manage Locations) when logged out', async () => {
+        const user = userEvent.setup();
+        render(<MemoryRouter><Header /></MemoryRouter>);
+        await user.click(screen.getByRole('button', { name: /menu/i }));
+        expect(screen.getByRole('link', { name: /sign in/i })).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /manage locations/i })).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /submit a business/i })).toBeInTheDocument();
+    });
+
+    it('shows "Manage Locations" and "Sign out" when logged in', async () => {
+        const user = userEvent.setup();
+        render(<MemoryRouter><Header authToken="tok" onLogout={() => {}} /></MemoryRouter>);
+        await user.click(screen.getByRole('button', { name: /menu/i }));
         expect(screen.getByRole('link', { name: /manage locations/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument();
     });
 });
 

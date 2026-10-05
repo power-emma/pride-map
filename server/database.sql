@@ -223,3 +223,26 @@ CREATE TABLE admin_users (
     password_hash TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Public business submissions awaiting admin review.
+-- Anyone can create a row here via the public submission form (CAPTCHA + rate
+-- limited); an admin then approves it (which copies it into `locations`) or
+-- rejects it from the Manage Locations tab. category_ids is stored as a plain
+-- integer array because the submission is not yet a normalized location.
+CREATE TABLE submissions (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    address VARCHAR(255),
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    url VARCHAR(255),
+    submitter_email VARCHAR(255) NOT NULL,
+    category_ids INTEGER[] NOT NULL DEFAULT '{}',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ
+);
+
+-- Fast lookup of the pending queue shown in the admin UI
+CREATE INDEX submissions_status_idx ON submissions (status, created_at);
