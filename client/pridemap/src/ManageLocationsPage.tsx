@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
+import { CITY_NAME } from './config';
 
 type Category = { id: number; name: string };
 
@@ -12,6 +13,18 @@ type Location = {
   longitude: number | null;
   url: string | null;
   category_ids: number[];
+};
+
+type EventItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  event_date: string;
+  event_time: string | null;
+  location: string | null;
+  city: string;
+  url: string | null;
+  created_at: string;
 };
 
 type Submission = {
@@ -68,8 +81,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Top-level view: edit the live map ('locations') or review the pending queue.
-  const [view, setView] = useState<'locations' | 'submissions'>('locations');
+  // Top-level view: edit the live map ('locations'), review the pending queue,
+  // or manage the "Happening in <city>" events cards.
+  const [view, setView] = useState<'locations' | 'submissions' | 'events'>('locations');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [submissionsError, setSubmissionsError] = useState<string | null>(null);
   // Tracks which submission ids currently have an approve/reject request in flight.
@@ -81,6 +95,24 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     latitude: '', longitude: '', url: '', categoryIds: [] as number[],
   });
   const [savingSubmission, setSavingSubmission] = useState(false);
+
+  // Events management ("Happening in <city>" cards on the main map).
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [eventMode, setEventMode] = useState<'idle' | 'edit' | 'create'>('idle');
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [eventCity, setEventCity] = useState(CITY_NAME);
+  const [eventUrl, setEventUrl] = useState('');
+  const [eventSaving, setEventSaving] = useState(false);
+  const [eventSaveError, setEventSaveError] = useState<string | null>(null);
+  const [eventSaveSuccess, setEventSaveSuccess] = useState<string | null>(null);
+  const [eventDeleting, setEventDeleting] = useState(false);
+  const [confirmEventDelete, setConfirmEventDelete] = useState(false);
 
   // 'idle' = nothing selected, 'edit' = editing existing, 'create' = new location form
   const [mode, setMode] = useState<'idle' | 'edit' | 'create'>('idle');
@@ -132,6 +164,27 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       })
       .catch((err) => {
         if (!cancelled) setSubmissionsError(err instanceof Error ? err.message : 'Failed to load submissions');
+      });
+    return () => { cancelled = true; };
+  }, [authToken, onAuthError]);
+
+  // Load all events (admin-only endpoint; includes past events for management).
+  useEffect(() => {
+    let cancelled = false;
+    setEventsError(null);
+    fetch('/api/events/all', {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    })
+      .then(async (res) => {
+        if (res.status === 401) { onAuthError(); return []; }
+        if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
+        return res.json();
+      })
+      .then((rows: EventItem[]) => {
+        if (!cancelled) setEvents(rows ?? []);
+      })
+      .catch((err) => {
+        if (!cancelled) setEventsError(err instanceof Error ? err.message : 'Failed to load events');
       });
     return () => { cancelled = true; };
   }, [authToken, onAuthError]);
@@ -439,6 +492,148 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     }
   }
 
+  function clearEventForm() {
+    setEventTitle('');
+    setEventDescription('');
+    setEventDate('');
+    setEventTime('');
+    setEventLocation('');
+    setEventCity(CITY_NAME);
+    setEventUrl('');
+    setEventSaveError(null);
+    setEventSaveSuccess(null);
+    setConfirmEventDelete(false);
+  }
+
+  function selectEvent(ev: EventItem) {
+    clearEventForm();
+    setSelectedEventId(ev.id);
+    setEventMode('edit');
+    setEventTitle(ev.title);
+    setEventDescription(ev.description ?? '');
+    setEventDate(ev.event_date.slice(0, 10));
+    setEventTime(ev.event_time ?? '');
+    setEventLocation(ev.location ?? '');
+    setEventCity(ev.city);
+    setEventUrl(ev.url ?? '');
+  }
+
+  function openCreateEvent() {
+    clearEventForm();
+    setSelectedEventId(null);
+    setEventMode('create');
+  }
+
+  function eventPayload() {
+    return {
+      title: eventTitle.trim(),
+      description: toNullIfEmpty(eventDescription),
+      event_date: eventDate,
+      event_time: toNullIfEmpty(eventTime),
+      location: toNullIfEmpty(eventLocation),
+      city: eventCity.trim() || CITY_NAME,
+      url: toNullIfEmpty(eventUrl),
+    };
+  }
+
+  async function handleEventCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setEventSaveError(null);
+    setEventSaveSuccess(null);
+
+    setEventSaving(true);
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(eventPayload()),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
+      if (!res.ok) {
+        setEventSaveError(json?.error ?? `Failed to create (${res.status})`);
+        return;
+      }
+
+      setEvents(prev => [...prev, json].sort((a, b) => a.event_date.localeCompare(b.event_date)));
+      setEventSaveSuccess('Event created.');
+      setSelectedEventId(json.id);
+      setEventMode('edit');
+    } catch (err) {
+      setEventSaveError(err instanceof Error ? err.message : 'Failed to create');
+    } finally {
+      setEventSaving(false);
+    }
+  }
+
+  async function handleEventSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (selectedEventId == null) return;
+    setEventSaveError(null);
+    setEventSaveSuccess(null);
+
+    setEventSaving(true);
+    try {
+      const res = await fetch(`/api/events/${selectedEventId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(eventPayload()),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
+      if (!res.ok) {
+        setEventSaveError(json?.error ?? `Failed to save (${res.status})`);
+        return;
+      }
+
+      setEvents(prev => prev.map(ev => (ev.id === selectedEventId ? json : ev)));
+      setEventSaveSuccess('Saved successfully.');
+    } catch (err) {
+      setEventSaveError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setEventSaving(false);
+    }
+  }
+
+  async function handleEventDelete() {
+    if (selectedEventId == null) return;
+    if (!confirmEventDelete) {
+      setConfirmEventDelete(true);
+      return;
+    }
+    setEventDeleting(true);
+    setEventSaveError(null);
+    try {
+      const res = await fetch(`/api/events/${selectedEventId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
+      if (!res.ok) {
+        setEventSaveError(json?.error ?? `Failed to delete (${res.status})`);
+        setEventDeleting(false);
+        return;
+      }
+      setEvents(prev => prev.filter(ev => ev.id !== selectedEventId));
+      setSelectedEventId(null);
+      setEventMode('idle');
+      setConfirmEventDelete(false);
+    } catch (err) {
+      setEventSaveError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setEventDeleting(false);
+    }
+  }
+
+  const selectedEvent = events.find(ev => ev.id === selectedEventId) ?? null;
+
   const selectedLocation = locations.find(l => l.id === selectedId) ?? null;
 
   if (loading) return <div style={{ padding: '2rem' }}>Loading…</div>;
@@ -539,6 +734,174 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     fontWeight: active ? 700 : 500,
     cursor: 'pointer',
   });
+
+  const eventForm = (isCreate: boolean) => (
+    <form onSubmit={isCreate ? handleEventCreate : handleEventSave} style={{ display: 'grid', gap: '0.75rem' }}>
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Title *</span>
+        <input value={eventTitle} onChange={e => setEventTitle(e.target.value)} required style={inputStyle} />
+      </label>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 600 }}>Date *</span>
+          <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} required style={inputStyle} />
+        </label>
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 600 }}>Time</span>
+          <input type="time" value={eventTime} onChange={e => setEventTime(e.target.value)} style={inputStyle} />
+        </label>
+      </div>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Description</span>
+        <textarea value={eventDescription} onChange={e => setEventDescription(e.target.value)} rows={4} style={inputStyle} />
+      </label>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Location / venue</span>
+        <input value={eventLocation} onChange={e => setEventLocation(e.target.value)} placeholder="e.g. Ottawa City Hall" style={inputStyle} />
+      </label>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>City *</span>
+        <input value={eventCity} onChange={e => setEventCity(e.target.value)} required style={inputStyle} />
+      </label>
+      <div style={{ fontSize: 13, opacity: 0.7 }}>
+        Must match "{CITY_NAME}" to show up in the "Happening in {CITY_NAME}" cards on the map.
+      </div>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Website URL</span>
+        <input value={eventUrl} onChange={e => setEventUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
+      </label>
+
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+        <button
+          type="submit"
+          disabled={eventSaving || eventTitle.trim().length === 0 || eventDate.trim().length === 0}
+          style={{ padding: '0.6rem 1.1rem', borderRadius: 8, border: '1px solid #444', fontWeight: 700, cursor: eventSaving ? 'not-allowed' : 'pointer' }}
+        >
+          {eventSaving ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Event' : 'Save Changes')}
+        </button>
+
+        {!isCreate && (
+          <button
+            type="button"
+            onClick={handleEventDelete}
+            disabled={eventDeleting}
+            style={{
+              padding: '0.6rem 1.1rem',
+              borderRadius: 8,
+              border: `1px solid ${confirmEventDelete ? '#ff5a5a' : '#444'}`,
+              fontWeight: 700,
+              color: confirmEventDelete ? '#ff5a5a' : 'inherit',
+              cursor: eventDeleting ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {eventDeleting ? 'Deleting…' : confirmEventDelete ? 'Confirm Delete' : 'Delete'}
+          </button>
+        )}
+
+        {confirmEventDelete && (
+          <button
+            type="button"
+            onClick={() => setConfirmEventDelete(false)}
+            style={{ padding: '0.6rem 0.9rem', borderRadius: 8, border: '1px solid #444', cursor: 'pointer' }}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
+  const eventsPanel = (
+    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '0.75rem', borderBottom: '1px solid #333' }}>
+          <button
+            onClick={openCreateEvent}
+            style={{
+              padding: '0.55rem 0.75rem',
+              borderRadius: 8,
+              border: '1px solid #555',
+              fontWeight: 700,
+              cursor: 'pointer',
+              background: eventMode === 'create' ? '#2a2a2a' : 'transparent',
+              color: 'inherit',
+              textAlign: 'left',
+              width: '100%',
+            }}
+          >
+            + Add Event
+          </button>
+        </div>
+        {eventsError && (
+          <div style={{ padding: '0.75rem', color: '#ff5a5a', fontSize: 13 }}>{eventsError}</div>
+        )}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {events.length === 0 && (
+            <div style={{ padding: '1rem', opacity: 0.6 }}>No events yet.</div>
+          )}
+          {events.map(ev => (
+            <button
+              key={ev.id}
+              onClick={() => selectEvent(ev)}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '0.65rem 0.75rem',
+                background: ev.id === selectedEventId && eventMode === 'edit' ? '#2a2a2a' : 'transparent',
+                border: 'none',
+                borderBottom: '1px solid #222',
+                color: 'inherit',
+                cursor: 'pointer',
+                fontWeight: ev.id === selectedEventId && eventMode === 'edit' ? 700 : 400,
+              }}
+            >
+              <div style={{ fontSize: 14 }}>{ev.title}</div>
+              <div style={{ fontSize: 12, opacity: 0.55, marginTop: 2 }}>
+                {ev.event_date.slice(0, 10)}{ev.event_time ? ` · ${ev.event_time.slice(0, 5)}` : ''} — {ev.city}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: '0.6rem', borderTop: '1px solid #333', fontSize: 12, opacity: 0.5 }}>
+          {events.length} event{events.length !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      <div style={{ overflowY: 'auto', padding: '1.5rem' }}>
+        <div style={{ maxWidth: 640, width: '100%', margin: '0 auto' }}>
+          {eventMode === 'idle' && (
+            <div style={{ opacity: 0.5, marginTop: '2rem', textAlign: 'center' }}>
+              Select an event to edit it, or click <strong>+ Add Event</strong>.
+            </div>
+          )}
+
+          {eventMode === 'create' && (
+            <>
+              <h2 style={{ margin: '0 0 1rem 0' }}>Add an Event</h2>
+              {eventSaveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{eventSaveError}</div>}
+              {eventSaveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{eventSaveSuccess}</div>}
+              {eventForm(true)}
+            </>
+          )}
+
+          {eventMode === 'edit' && selectedEvent != null && (
+            <>
+              <h2 style={{ margin: '0 0 1rem 0' }}>Edit: {selectedEvent.title}</h2>
+              {eventSaveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{eventSaveError}</div>}
+              {eventSaveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{eventSaveSuccess}</div>}
+              {eventForm(false)}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   const submissionsPanel = (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1.5rem' }}>
@@ -710,9 +1073,12 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <button type="button" onClick={() => setView('submissions')} style={tabBtnStyle(view === 'submissions')}>
           Pending Submissions{submissions.length > 0 ? ` (${submissions.length})` : ''}
         </button>
+        <button type="button" onClick={() => setView('events')} style={tabBtnStyle(view === 'events')}>
+          Events{events.length > 0 ? ` (${events.length})` : ''}
+        </button>
       </div>
 
-      {view === 'submissions' ? submissionsPanel : (
+      {view === 'submissions' ? submissionsPanel : view === 'events' ? eventsPanel : (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
       {/* Sidebar */}

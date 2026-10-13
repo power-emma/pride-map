@@ -6,6 +6,7 @@ import SearchBar from './components/SearchBar';
 import LocationSidebar, { type LocationSidebarItem } from './components/LocationSidebar';
 import './App.css'
 import CardDeck from './CardDeck';
+import EventsCard from './components/EventsCard';
 import CreateLocationPage from './CreateLocationPage.tsx';
 import ManageLocationsPage from './ManageLocationsPage.tsx';
 import LoginPage from './LoginPage.tsx';
@@ -80,6 +81,8 @@ function App() {
 									See all
 								</button>
 							)}
+
+							{!selectedDetails && !servicesOpen && <EventsCard />}
 
 							<LocationSidebar location={selectedDetails} onClose={() => setSelectedDetails(null)} />
 

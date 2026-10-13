@@ -246,3 +246,20 @@ CREATE TABLE submissions (
 
 -- Fast lookup of the pending queue shown in the admin UI
 CREATE INDEX submissions_status_idx ON submissions (status, created_at);
+
+-- Events shown as "Happening in <city>" cards on the main map. Admins create
+-- and manage these from the Manage Locations page.
+CREATE TABLE events (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    event_date DATE NOT NULL,
+    event_time TIME,
+    location VARCHAR(255),
+    city VARCHAR(255) NOT NULL DEFAULT 'Ottawa',
+    url VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Fast lookup of the upcoming-events queue shown on the map
+CREATE INDEX events_date_idx ON events (event_date);
