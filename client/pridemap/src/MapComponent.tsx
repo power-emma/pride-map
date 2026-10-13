@@ -24,7 +24,7 @@ const MapComponent = ({ selectedLocation, categoryFilter, searchQuery, onMarkerS
     selectedLocation?: {lat: number, lng: number, name: string} | null,
     categoryFilter?: string | null,
     searchQuery?: string,
-    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null }) => void,
+    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null, imageUrl?: string | null }) => void,
 }) => {
     const defaultCenter: LatLngExpression = [45.42060673930713, -75.68282689676013]; // uOttawa
 

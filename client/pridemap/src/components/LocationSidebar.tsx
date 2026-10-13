@@ -6,6 +6,7 @@ type LocationSidebarItem = {
   description?: string | null;
   address?: string | null;
   url?: string | null;
+  imageUrl?: string | null;
 };
 
 const LocationSidebar = ({
@@ -48,6 +49,9 @@ const LocationSidebar = ({
       </button>
 
       <div className="location-sidebar__content">
+        {location.imageUrl && (
+          <img className="location-sidebar__image" src={location.imageUrl} alt="" />
+        )}
         <h2 className="location-sidebar__title">{location.name}</h2>
 
         <div className="location-sidebar__tags" aria-label="Location categories">

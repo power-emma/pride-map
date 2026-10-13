@@ -2,20 +2,22 @@ import { useState } from 'react';
 import type { MouseEvent } from 'react';
 import { CATEGORY_COLOURS, DEFAULT_COLOUR } from './categoryColours';
 
-const CardComponent = ({ 
-    title, 
-    description, 
-    buttonText, 
-    url, 
-    latitude, 
-    longitude, 
+const CardComponent = ({
+    title,
+    description,
+    buttonText,
+    url,
+    imageUrl,
+    latitude,
+    longitude,
     categories = [],
-    onLocationSelect 
-}: { 
-    title: string, 
-    description: string, 
-    buttonText: string, 
+    onLocationSelect
+}: {
+    title: string,
+    description: string,
+    buttonText: string,
     url?: string | null,
+    imageUrl?: string | null,
     latitude?: number | null,
     longitude?: number | null,
     categories?: string[],
@@ -87,6 +89,13 @@ const CardComponent = ({
             {/* Accordion body */}
             {open && (
                 <div style={{ padding: '0 4px 12px 4px' }}>
+                    {imageUrl && (
+                        <img
+                            src={imageUrl}
+                            alt=""
+                            style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 8, marginBottom: '10px' }}
+                        />
+                    )}
                     <p style={{
                         fontSize: '14px',
                         color: '#ffffff',

@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { turnstileSecret } = require('../config');
+const { handleImageUpload } = require('../middleware/upload');
 
 // ---------------------------------------------------------------------------
 // Validation helpers (mirrors the ones in routes/locations.js)
@@ -121,6 +122,7 @@ router.post('/', async (req, res) => {
     const description = emptyToNull(req.body?.description);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
+    const imageUrl = emptyToNull(req.body?.image_url);
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -142,10 +144,10 @@ router.post('/', async (req, res) => {
     // 4) Persist as a pending submission.
     const result = await pool.query(
       `INSERT INTO submissions
-         (name, description, address, latitude, longitude, url, submitter_email, category_ids, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         (name, description, address, latitude, longitude, url, image_url, submitter_email, category_ids, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
        RETURNING id`,
-      [name, description, address, latitude, longitude, url, submitterEmail.trim(), categoryIds]
+      [name, description, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds]
     );
 
     // 5) Record the successful submission for rate limiting.
@@ -177,7 +179,8 @@ router.get('/', requireAuth, async (req, res) => {
       result = await pool.query(
         `SELECT id, name, description, address,
                 latitude::float8 AS latitude, longitude::float8 AS longitude,
-                url, submitter_email, category_ids, status, created_at, reviewed_at
+                url, image_url, (image_data IS NOT NULL) AS has_image,
+                submitter_email, category_ids, status, created_at, reviewed_at
          FROM submissions
          ORDER BY created_at DESC`
       );
@@ -188,7 +191,8 @@ router.get('/', requireAuth, async (req, res) => {
       result = await pool.query(
         `SELECT id, name, description, address,
                 latitude::float8 AS latitude, longitude::float8 AS longitude,
-                url, submitter_email, category_ids, status, created_at, reviewed_at
+                url, image_url, (image_data IS NOT NULL) AS has_image,
+                submitter_email, category_ids, status, created_at, reviewed_at
          FROM submissions
          WHERE status = $1
          ORDER BY created_at DESC`,
@@ -229,6 +233,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     const description = emptyToNull(req.body?.description);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
+    const imageUrl = emptyToNull(req.body?.image_url);
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -250,12 +255,12 @@ router.put('/:id', requireAuth, async (req, res) => {
     const result = await pool.query(
       `UPDATE submissions
          SET name = $1, description = $2, address = $3, latitude = $4,
-             longitude = $5, url = $6, submitter_email = $7, category_ids = $8
-       WHERE id = $9 AND status = 'pending'
+             longitude = $5, url = $6, image_url = $7, submitter_email = $8, category_ids = $9
+       WHERE id = $10 AND status = 'pending'
        RETURNING id, name, description, address,
                  latitude::float8 AS latitude, longitude::float8 AS longitude,
-                 url, submitter_email, category_ids, status, created_at`,
-      [name, description, address, latitude, longitude, url, submitterEmail.trim(), categoryIds, id]
+                 url, image_url, submitter_email, category_ids, status, created_at`,
+      [name, description, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds, id]
     );
 
     if (result.rowCount === 0) {
@@ -286,7 +291,8 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
     await client.query('BEGIN');
 
     const sub = await client.query(
-      `SELECT name, description, address, latitude, longitude, url, category_ids, status
+      `SELECT name, description, address, latitude, longitude, url, image_url,
+              image_data, image_mime_type, category_ids, status
        FROM submissions WHERE id = $1 FOR UPDATE`,
       [id]
     );
@@ -303,9 +309,9 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
     const s = sub.rows[0];
 
     const loc = await client.query(
-      `INSERT INTO locations (name, description, address, latitude, longitude, url)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [s.name, s.description, s.address, s.latitude, s.longitude, s.url]
+      `INSERT INTO locations (name, description, address, latitude, longitude, url, image_url, image_data, image_mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [s.name, s.description, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type]
     );
     const locationId = loc.rows[0].id;
 
@@ -358,6 +364,81 @@ router.post('/:id/reject', requireAuth, async (req, res) => {
     return res.json({ id, status: 'rejected' });
   } catch (error) {
     console.error('Error rejecting submission:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /submissions/:id/image — public. Same sensitivity as the photo itself
+// becoming public once the submission is approved; only submitter_email is
+// gated, and this endpoint doesn't expose it.
+router.get('/:id/image', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid submission id' });
+    }
+
+    const result = await pool.query(
+      'SELECT image_data, image_mime_type FROM submissions WHERE id = $1',
+      [id]
+    );
+    const row = result.rows[0];
+    if (!row || !row.image_data) {
+      return res.status(404).json({ error: 'No image uploaded for this submission' });
+    }
+
+    res.set('Content-Type', row.image_mime_type || 'application/octet-stream');
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.send(row.image_data);
+  } catch (error) {
+    console.error('Error serving submission image:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /submissions/:id/image — admin only. Attach/replace a photo while
+// reviewing a pending submission, before approving it.
+router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid submission id' });
+    }
+
+    const result = await pool.query(
+      'UPDATE submissions SET image_data = $1, image_mime_type = $2 WHERE id = $3 RETURNING id',
+      [req.file.buffer, req.file.mimetype, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    return res.json({ id, has_image: true });
+  } catch (error) {
+    console.error('Error uploading submission image:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// DELETE /submissions/:id/image — admin only.
+router.delete('/:id/image', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid submission id' });
+    }
+
+    const result = await pool.query(
+      'UPDATE submissions SET image_data = NULL, image_mime_type = NULL WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Submission not found' });
+    }
+
+    return res.json({ id, has_image: false });
+  } catch (error) {
+    console.error('Error deleting submission image:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });

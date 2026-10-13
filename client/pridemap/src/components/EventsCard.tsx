@@ -10,6 +10,7 @@ type Event = {
   location: string | null;
   city: string;
   url: string | null;
+  image_url: string | null;
 };
 
 function formatEventDate(event: Event): string {
@@ -35,6 +36,7 @@ function formatEventDate(event: Event): string {
 const EventsCard = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeEvent, setActiveEvent] = useState<Event | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +52,16 @@ const EventsCard = () => {
     return () => { cancelled = true; };
   }, []);
 
+  // Close the modal on Escape.
+  useEffect(() => {
+    if (!activeEvent) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setActiveEvent(null);
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [activeEvent]);
+
   if (loading || events.length === 0) return null;
 
   return (
@@ -57,25 +69,84 @@ const EventsCard = () => {
       <h2 className="events-card__title">Happening in {CITY_NAME}</h2>
       <div className="events-card__list">
         {events.map(event => (
-          <div key={event.id} className="events-card__item">
+          <div key={event.id} className="events-card__item" onClick={() => setActiveEvent(event)}>
+            {event.image_url && (
+              <img className="events-card__image" src={event.image_url} alt="" loading="lazy" />
+            )}
             <div className="events-card__date">{formatEventDate(event)}</div>
             <div className="events-card__name">{event.title}</div>
             {event.location && (
               <div className="events-card__location">{event.location}</div>
             )}
-            {event.url && (
-              <a
+            <div className="events-card__actions">
+              <button
+                type="button"
                 className="events-card__link"
-                href={event.url}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={(e) => { e.stopPropagation(); setActiveEvent(event); }}
               >
-                Learn more
-              </a>
-            )}
+                View details
+              </button>
+              {event.url && (
+                <a
+                  className="events-card__link"
+                  href={event.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Learn more
+                </a>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
+      {activeEvent && (
+        <div className="event-modal-scrim" onClick={() => setActiveEvent(null)}>
+          <div
+            className="event-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={activeEvent.title}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="event-modal__close"
+              aria-label="Close"
+              onClick={() => setActiveEvent(null)}
+            >
+              ×
+            </button>
+
+            {activeEvent.image_url && (
+              <img className="event-modal__image" src={activeEvent.image_url} alt="" />
+            )}
+
+            <div className="event-modal__body">
+              <div className="events-card__date">{formatEventDate(activeEvent)}</div>
+              <h3 className="event-modal__title">{activeEvent.title}</h3>
+              {activeEvent.location && (
+                <div className="events-card__location">{activeEvent.location}</div>
+              )}
+              {activeEvent.description && (
+                <p className="event-modal__description">{activeEvent.description}</p>
+              )}
+              {activeEvent.url && (
+                <a
+                  className="events-card__link"
+                  href={activeEvent.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Learn more
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

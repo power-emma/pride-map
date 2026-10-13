@@ -34,6 +34,7 @@ export default function CreateLocationPage() {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [url, setUrl] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
 
   const [captchaToken, setCaptchaToken] = useState('');
@@ -109,6 +110,7 @@ export default function CreateLocationPage() {
       latitude: lat,
       longitude: lng,
       url: toNullIfEmpty(url),
+      image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
       captchaToken,
     };
@@ -145,6 +147,7 @@ export default function CreateLocationPage() {
       setLatitude('');
       setLongitude('');
       setUrl('');
+      setImageUrl('');
       setCategoryIds([]);
       setCaptchaToken('');
       setCaptchaResetSignal((n) => n + 1);
@@ -314,6 +317,19 @@ export default function CreateLocationPage() {
             placeholder="https://example.org"
             style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
           />
+        </label>
+
+        <label style={{ display: 'grid', gap: '0.35rem' }}>
+          <span style={{ fontWeight: 600 }}>Image URL</span>
+          <input
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://example.org/photo.jpg"
+            style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
+          />
+          <span style={{ fontSize: 13, opacity: 0.7 }}>
+            Optional. A link to a photo of your business.
+          </span>
         </label>
 
         <div style={{ display: 'grid', gap: '0.35rem' }}>

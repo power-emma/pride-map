@@ -13,6 +13,7 @@ router.get('/', async (req, res) => {
                 l.latitude::float8 AS latitude,
                 l.longitude::float8 AS longitude,
                 l.url,
+                CASE WHEN l.image_data IS NOT NULL THEN '/api/locations/' || l.id || '/image' ELSE l.image_url END AS image_url,
                 COALESCE(
                     ARRAY_AGG(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL),
                     '{}'
@@ -20,7 +21,7 @@ router.get('/', async (req, res) => {
             FROM locations l
             LEFT JOIN location_categories lc ON lc.id_location = l.id
             LEFT JOIN categories c ON c.id = lc.id_category
-            GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url
+            GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url, l.image_url
             ORDER BY l.name
         `);
         const cards = result.rows.map(location => ({
@@ -30,6 +31,7 @@ router.get('/', async (req, res) => {
             latitude: location.latitude,
             longitude: location.longitude,
             url: location.url,
+            image_url: location.image_url,
             categories: location.categories
         }));
         res.json(cards);
@@ -50,6 +52,7 @@ router.get('/with-location', async (req, res) => {
                 l.latitude::float8 AS latitude,
                 l.longitude::float8 AS longitude,
                 l.url,
+                CASE WHEN l.image_data IS NOT NULL THEN '/api/locations/' || l.id || '/image' ELSE l.image_url END AS image_url,
                 COALESCE(
                     ARRAY_AGG(c.name ORDER BY c.name) FILTER (WHERE c.name IS NOT NULL),
                     '{}'
@@ -58,7 +61,7 @@ router.get('/with-location', async (req, res) => {
             LEFT JOIN location_categories lc ON lc.id_location = l.id
             LEFT JOIN categories c ON c.id = lc.id_category
             WHERE l.latitude IS NOT NULL AND l.longitude IS NOT NULL
-            GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url
+            GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url, l.image_url
             ORDER BY l.name
         `);
         const cards = result.rows.map(location => ({
@@ -68,6 +71,7 @@ router.get('/with-location', async (req, res) => {
             latitude: location.latitude,
             longitude: location.longitude,
             url: location.url,
+            image_url: location.image_url,
             categories: location.categories
         }));
         res.json(cards);

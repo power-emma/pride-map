@@ -22,7 +22,11 @@ CREATE TABLE locations (
     address VARCHAR(255),
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
-    url VARCHAR(255)
+    url VARCHAR(255),
+    image_url TEXT,
+    -- Uploaded image, stored as a BLOB; takes priority over image_url when set.
+    image_data BYTEA,
+    image_mime_type VARCHAR(100)
 );
 
 -- Junction table linking locations to their categories (many-to-many)
@@ -237,6 +241,9 @@ CREATE TABLE submissions (
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
     url VARCHAR(255),
+    image_url TEXT,
+    image_data BYTEA,
+    image_mime_type VARCHAR(100),
     submitter_email VARCHAR(255) NOT NULL,
     category_ids INTEGER[] NOT NULL DEFAULT '{}',
     status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending | approved | rejected
@@ -256,10 +263,17 @@ CREATE TABLE events (
     event_date DATE NOT NULL,
     event_time TIME,
     location VARCHAR(255),
+    -- Optional link to the business hosting the event. Used to fall back to
+    -- that business's image when the event doesn't have its own.
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
     city VARCHAR(255) NOT NULL DEFAULT 'Ottawa',
     url VARCHAR(255),
+    image_url TEXT,
+    image_data BYTEA,
+    image_mime_type VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Fast lookup of the upcoming-events queue shown on the map
 CREATE INDEX events_date_idx ON events (event_date);
+CREATE INDEX events_location_id_idx ON events (location_id);

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { handleImageUpload } = require('../middleware/upload');
 
 function emptyToNull(value) {
   if (value === undefined || value === null) return null;
@@ -29,13 +30,15 @@ router.get('/', async (req, res) => {
         l.latitude::float8 AS latitude,
         l.longitude::float8 AS longitude,
         l.url,
+        l.image_url,
+        (l.image_data IS NOT NULL) AS has_image,
         COALESCE(
           ARRAY_AGG(lc.id_category ORDER BY lc.id_category) FILTER (WHERE lc.id_category IS NOT NULL),
           '{}'
         ) AS category_ids
       FROM locations l
       LEFT JOIN location_categories lc ON lc.id_location = l.id
-      GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url
+      GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url, l.image_url
       ORDER BY l.name
     `);
     res.json(result.rows);
@@ -69,6 +72,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     const description = emptyToNull(req.body?.description);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
+    const imageUrl = emptyToNull(req.body?.image_url);
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -89,8 +93,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE locations SET name=$1, description=$2, address=$3, latitude=$4, longitude=$5, url=$6 WHERE id=$7 RETURNING id',
-      [name, description, address, latitude, longitude, url, id]
+      'UPDATE locations SET name=$1, description=$2, address=$3, latitude=$4, longitude=$5, url=$6, image_url=$7 WHERE id=$8 RETURNING id',
+      [name, description, address, latitude, longitude, url, imageUrl, id]
     );
 
     if (result.rowCount === 0) {
@@ -106,7 +110,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       );
     }
 
-    return res.json({ id, name, description, address, latitude, longitude, url, category_ids: categoryIds });
+    return res.json({ id, name, description, address, latitude, longitude, url, image_url: imageUrl, category_ids: categoryIds });
   } catch (error) {
     console.error('Error updating location:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -143,6 +147,7 @@ router.post('/', requireAuth, async (req, res) => {
     const description = emptyToNull(req.body?.description);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
+    const imageUrl = emptyToNull(req.body?.image_url);
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -163,8 +168,8 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     const result = await pool.query(
-      'INSERT INTO locations (name, description, address, latitude, longitude, url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-      [name, description, address, latitude, longitude, url]
+      'INSERT INTO locations (name, description, address, latitude, longitude, url, image_url) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+      [name, description, address, latitude, longitude, url, imageUrl]
     );
 
     const locationId = result.rows[0]?.id;
@@ -184,10 +189,83 @@ router.post('/', requireAuth, async (req, res) => {
       latitude,
       longitude,
       url,
+      image_url: imageUrl,
       category_ids: categoryIds,
     });
   } catch (error) {
     console.error('Error creating location:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /locations/:id/image — public. Serves the uploaded BLOB, if any.
+router.get('/:id/image', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid location id' });
+    }
+
+    const result = await pool.query(
+      'SELECT image_data, image_mime_type FROM locations WHERE id = $1',
+      [id]
+    );
+    const row = result.rows[0];
+    if (!row || !row.image_data) {
+      return res.status(404).json({ error: 'No image uploaded for this location' });
+    }
+
+    res.set('Content-Type', row.image_mime_type || 'application/octet-stream');
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.send(row.image_data);
+  } catch (error) {
+    console.error('Error serving location image:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /locations/:id/image — admin only. Uploads (replacing) the image BLOB.
+router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid location id' });
+    }
+
+    const result = await pool.query(
+      'UPDATE locations SET image_data = $1, image_mime_type = $2 WHERE id = $3 RETURNING id',
+      [req.file.buffer, req.file.mimetype, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    return res.json({ id, has_image: true });
+  } catch (error) {
+    console.error('Error uploading location image:', error);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// DELETE /locations/:id/image — admin only. Clears the uploaded BLOB.
+router.delete('/:id/image', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid location id' });
+    }
+
+    const result = await pool.query(
+      'UPDATE locations SET image_data = NULL, image_mime_type = NULL WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+
+    return res.json({ id, has_image: false });
+  } catch (error) {
+    console.error('Error deleting location image:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });

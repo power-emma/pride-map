@@ -59,20 +59,21 @@ const buildPinIcon = (categories: string[]): L.Icon => {
     });
 };
 
-const MarkerComponent = ({ name, position, categories = [], description, address, url, onMarkerSelect }: {
+const MarkerComponent = ({ name, position, categories = [], description, address, url, imageUrl, onMarkerSelect }: {
     name: string,
     position: [number, number],
     categories?: string[],
     description?: string | null,
     address?: string | null,
     url?: string | null,
-    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null }) => void,
+    imageUrl?: string | null,
+    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null, imageUrl?: string | null }) => void,
 }) => {
     const icon = buildPinIcon(categories);
 
     const handleClick = () => {
         if (onMarkerSelect) {
-            onMarkerSelect(position[0], position[1], name, { categories, description, address, url });
+            onMarkerSelect(position[0], position[1], name, { categories, description, address, url, imageUrl });
         }
     };
 

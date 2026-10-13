@@ -166,6 +166,11 @@ server {
     listen ${NGINX_PORT};
     server_name localhost;
 
+    # Matches the 5MB image upload limit enforced in server/middleware/upload.js —
+    # nginx's 1MB default would otherwise reject uploads with a 413 before they
+    # ever reach Node.
+    client_max_body_size 6M;
+
     access_log $LOG_DIR/nginx-access.log;
     error_log  $LOG_DIR/nginx-error.log;
 

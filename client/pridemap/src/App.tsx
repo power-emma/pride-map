@@ -33,6 +33,7 @@ function App() {
 			description: details?.description ?? null,
 			address: details?.address ?? null,
 			url: details?.url ?? null,
+			imageUrl: details?.imageUrl ?? null,
 		});
 		setServicesOpen(false);
 	};
@@ -55,12 +56,24 @@ function App() {
 					element={
 						<div className="map-page">
 							<Header authToken={authToken} onLogout={handleLogout}>
-								<SearchBar
-									query={searchQuery}
-									onQueryChange={setSearchQuery}
-									selectedCategory={categoryFilter}
-									onCategoryChange={setCategoryFilter}
-								/>
+								<div className="header-search-row">
+									<SearchBar
+										query={searchQuery}
+										onQueryChange={setSearchQuery}
+										selectedCategory={categoryFilter}
+										onCategoryChange={setCategoryFilter}
+									/>
+									{!selectedDetails && (
+										<button
+											type="button"
+											className="see-all-btn"
+											onClick={() => setServicesOpen(open => !open)}
+											aria-expanded={servicesOpen}
+										>
+											See all
+										</button>
+									)}
+								</div>
 							</Header>
 							<div className="map-fullscreen">
 								<MapComponent
@@ -70,17 +83,6 @@ function App() {
 									onMarkerSelect={handleLocationSelect}
 								/>
 							</div>
-
-							{!selectedDetails && (
-								<button
-									type="button"
-									className="see-all-btn"
-									onClick={() => setServicesOpen(open => !open)}
-									aria-expanded={servicesOpen}
-								>
-									See all
-								</button>
-							)}
 
 							{!selectedDetails && !servicesOpen && <EventsCard />}
 

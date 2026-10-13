@@ -5,7 +5,7 @@ import UserMarkerComponent from './UserMarkerComponent';
 import MarkerComponent from './MarkerComponent';
 import ClusterMarker from './ClusterMarker';
 
-type Pin = { name: string, position: [number, number], categories: string[], description?: string | null, address?: string | null, url?: string | null };
+type Pin = { name: string, position: [number, number], categories: string[], description?: string | null, address?: string | null, url?: string | null, image_url?: string | null };
 
 // Grid cell size in screen pixels. Pins in the same cell are always grouped.
 const CLUSTER_RADIUS_PX = 45;
@@ -178,7 +178,7 @@ const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, 
     selectedLocation?: {lat: number, lng: number, name: string},
     categoryFilter: string | null,
     searchQuery?: string,
-    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null }) => void,
+    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null, imageUrl?: string | null }) => void,
 }) => {
     const map = useMap();
     const [pins, setPins] = useState<Pin[]>([]);
@@ -233,6 +233,7 @@ const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, 
                     description={pin.description}
                     address={pin.address}
                     url={pin.url}
+                    imageUrl={pin.image_url}
                     onMarkerSelect={onMarkerSelect}
                 />
             );

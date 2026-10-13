@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
+import ImageUploadControl from './components/ImageUploadControl';
 import { CITY_NAME } from './config';
 
 type Category = { id: number; name: string };
@@ -12,6 +13,8 @@ type Location = {
   latitude: number | null;
   longitude: number | null;
   url: string | null;
+  image_url: string | null;
+  has_image: boolean;
   category_ids: number[];
 };
 
@@ -22,8 +25,14 @@ type EventItem = {
   event_date: string;
   event_time: string | null;
   location: string | null;
+  location_id: number | null;
+  location_name?: string | null;
+  location_image_url?: string | null;
+  location_has_image?: boolean;
   city: string;
   url: string | null;
+  image_url: string | null;
+  has_image: boolean;
   created_at: string;
 };
 
@@ -35,6 +44,8 @@ type Submission = {
   latitude: number | null;
   longitude: number | null;
   url: string | null;
+  image_url: string | null;
+  has_image: boolean;
   submitter_email: string;
   category_ids: number[];
   status: string;
@@ -92,7 +103,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const [editingSubmissionId, setEditingSubmissionId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({
     name: '', email: '', description: '', address: '',
-    latitude: '', longitude: '', url: '', categoryIds: [] as number[],
+    latitude: '', longitude: '', url: '', imageUrl: '', categoryIds: [] as number[],
   });
   const [savingSubmission, setSavingSubmission] = useState(false);
 
@@ -106,8 +117,11 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
   const [eventLocation, setEventLocation] = useState('');
+  const [eventLocationId, setEventLocationId] = useState<number | null>(null);
   const [eventCity, setEventCity] = useState(CITY_NAME);
   const [eventUrl, setEventUrl] = useState('');
+  const [eventImageUrl, setEventImageUrl] = useState('');
+  const [eventHasImage, setEventHasImage] = useState(false);
   const [eventSaving, setEventSaving] = useState(false);
   const [eventSaveError, setEventSaveError] = useState<string | null>(null);
   const [eventSaveSuccess, setEventSaveSuccess] = useState<string | null>(null);
@@ -126,6 +140,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [url, setUrl] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [hasImage, setHasImage] = useState(false);
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
 
   const [saving, setSaving] = useState(false);
@@ -223,6 +239,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         latitude: sub.latitude,
         longitude: sub.longitude,
         url: sub.url,
+        image_url: sub.image_url,
+        has_image: sub.has_image,
         category_ids: sub.category_ids,
       };
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
@@ -267,6 +285,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       latitude: sub.latitude != null ? String(sub.latitude) : '',
       longitude: sub.longitude != null ? String(sub.longitude) : '',
       url: sub.url ?? '',
+      imageUrl: sub.image_url ?? '',
       categoryIds: sub.category_ids,
     });
   }
@@ -293,6 +312,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       latitude: lat,
       longitude: lng,
       url: toNullIfEmpty(editDraft.url),
+      image_url: toNullIfEmpty(editDraft.imageUrl),
       category_ids: editDraft.categoryIds,
     };
 
@@ -329,6 +349,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setLatitude('');
     setLongitude('');
     setUrl('');
+    setImageUrl('');
+    setHasImage(false);
     setCategoryIds([]);
     setSaveError(null);
     setSaveSuccess(null);
@@ -345,6 +367,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setLatitude(loc.latitude != null ? String(loc.latitude) : '');
     setLongitude(loc.longitude != null ? String(loc.longitude) : '');
     setUrl(loc.url ?? '');
+    setImageUrl(loc.image_url ?? '');
+    setHasImage(loc.has_image);
     setCategoryIds(loc.category_ids);
   }
 
@@ -374,6 +398,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       latitude: lat,
       longitude: lng,
       url: toNullIfEmpty(url),
+      image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
     };
 
@@ -428,6 +453,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       latitude: lat,
       longitude: lng,
       url: toNullIfEmpty(url),
+      image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
     };
 
@@ -448,7 +474,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         return;
       }
 
-      const newLoc: Location = { id: json.id, ...payload, category_ids: payload.category_ids };
+      const newLoc: Location = { id: json.id, ...payload, has_image: false, category_ids: payload.category_ids };
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
       setSaveSuccess('Location created.');
       // Switch to editing the new location
@@ -498,8 +524,11 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setEventDate('');
     setEventTime('');
     setEventLocation('');
+    setEventLocationId(null);
     setEventCity(CITY_NAME);
     setEventUrl('');
+    setEventImageUrl('');
+    setEventHasImage(false);
     setEventSaveError(null);
     setEventSaveSuccess(null);
     setConfirmEventDelete(false);
@@ -514,8 +543,11 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setEventDate(ev.event_date.slice(0, 10));
     setEventTime(ev.event_time ?? '');
     setEventLocation(ev.location ?? '');
+    setEventLocationId(ev.location_id ?? null);
     setEventCity(ev.city);
     setEventUrl(ev.url ?? '');
+    setEventImageUrl(ev.image_url ?? '');
+    setEventHasImage(ev.has_image);
   }
 
   function openCreateEvent() {
@@ -531,8 +563,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       event_date: eventDate,
       event_time: toNullIfEmpty(eventTime),
       location: toNullIfEmpty(eventLocation),
+      location_id: eventLocationId,
       city: eventCity.trim() || CITY_NAME,
       url: toNullIfEmpty(eventUrl),
+      image_url: toNullIfEmpty(eventImageUrl),
     };
   }
 
@@ -558,7 +592,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         return;
       }
 
-      setEvents(prev => [...prev, json].sort((a, b) => a.event_date.localeCompare(b.event_date)));
+      setEvents(prev => [...prev, { ...json, has_image: false }].sort((a, b) => a.event_date.localeCompare(b.event_date)));
       setEventSaveSuccess('Event created.');
       setSelectedEventId(json.id);
       setEventMode('edit');
@@ -592,7 +626,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         return;
       }
 
-      setEvents(prev => prev.map(ev => (ev.id === selectedEventId ? json : ev)));
+      // The PUT response doesn't carry the joined business name/image — recompute
+      // them from the already-loaded locations list so the admin UI stays correct
+      // even if location_id just changed.
+      const linkedLoc = json.location_id != null ? locations.find(l => l.id === json.location_id) : null;
+      setEvents(prev => prev.map(ev => (ev.id === selectedEventId ? {
+        ...ev,
+        ...json,
+        location_name: linkedLoc?.name ?? null,
+        location_image_url: linkedLoc?.image_url ?? null,
+        location_has_image: linkedLoc?.has_image ?? false,
+      } : ev)));
       setEventSaveSuccess('Saved successfully.');
     } catch (err) {
       setEventSaveError(err instanceof Error ? err.message : 'Failed to save');
@@ -685,6 +729,25 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
       </label>
 
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Image URL</span>
+        <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://example.org/photo.jpg" style={inputStyle} />
+      </label>
+      {!hasImage && imageUrl.trim() && (
+        <img src={imageUrl} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 8 }} />
+      )}
+
+      <div style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Upload Image</span>
+        <ImageUploadControl
+          authToken={authToken}
+          uploadUrl={!isCreate && selectedId != null ? `/api/locations/${selectedId}/image` : null}
+          hasImage={hasImage}
+          onChange={setHasImage}
+        />
+        <span style={{ fontSize: 13, opacity: 0.7 }}>An uploaded photo takes priority over the Image URL above.</span>
+      </div>
+
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
         <button
           type="submit"
@@ -764,6 +827,23 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       </label>
 
       <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Linked business (optional)</span>
+        <select
+          value={eventLocationId ?? ''}
+          onChange={e => setEventLocationId(e.target.value ? Number(e.target.value) : null)}
+          style={inputStyle}
+        >
+          <option value="">None</option>
+          {locations.map(loc => (
+            <option key={loc.id} value={loc.id}>{loc.name}</option>
+          ))}
+        </select>
+      </label>
+      <div style={{ fontSize: 13, opacity: 0.7 }}>
+        If this event has no image of its own, the linked business's image is shown instead.
+      </div>
+
+      <label style={labelStyle}>
         <span style={{ fontWeight: 600 }}>City *</span>
         <input value={eventCity} onChange={e => setEventCity(e.target.value)} required style={inputStyle} />
       </label>
@@ -775,6 +855,36 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <span style={{ fontWeight: 600 }}>Website URL</span>
         <input value={eventUrl} onChange={e => setEventUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
       </label>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Image URL</span>
+        <input value={eventImageUrl} onChange={e => setEventImageUrl(e.target.value)} placeholder="https://example.org/photo.jpg" style={inputStyle} />
+      </label>
+
+      <div style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>Upload Image</span>
+        <ImageUploadControl
+          authToken={authToken}
+          uploadUrl={!isCreate && selectedEventId != null ? `/api/events/${selectedEventId}/image` : null}
+          hasImage={eventHasImage}
+          onChange={setEventHasImage}
+        />
+      </div>
+
+      {!eventHasImage && (() => {
+        const linkedLoc = eventLocationId != null ? locations.find(l => l.id === eventLocationId) : null;
+        const linkedImage = linkedLoc?.has_image ? `/api/locations/${linkedLoc.id}/image` : (linkedLoc?.image_url ?? null);
+        const preview = eventImageUrl.trim() || linkedImage;
+        if (!preview) return null;
+        return (
+          <div style={{ display: 'grid', gap: '0.3rem' }}>
+            <img src={preview} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 8 }} />
+            {!eventImageUrl.trim() && (
+              <span style={{ fontSize: 12, opacity: 0.6 }}>Using the linked business's image (no image set for this event).</span>
+            )}
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
         <button
@@ -975,6 +1085,20 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                         <span style={{ fontWeight: 600 }}>Website URL</span>
                         <input value={editDraft.url} onChange={e => setEditDraft(d => ({ ...d, url: e.target.value }))} placeholder="https://example.org" style={inputStyle} />
                       </label>
+                      <label style={labelStyle}>
+                        <span style={{ fontWeight: 600 }}>Image URL</span>
+                        <input value={editDraft.imageUrl} onChange={e => setEditDraft(d => ({ ...d, imageUrl: e.target.value }))} placeholder="https://example.org/photo.jpg" style={inputStyle} />
+                      </label>
+                      <div style={labelStyle}>
+                        <span style={{ fontWeight: 600 }}>Upload Image</span>
+                        <ImageUploadControl
+                          authToken={authToken}
+                          uploadUrl={`/api/submissions/${sub.id}/image`}
+                          hasImage={sub.has_image}
+                          onChange={(has) => setSubmissions(prev => prev.map(s => (s.id === sub.id ? { ...s, has_image: has } : s)))}
+                        />
+                        <span style={{ fontSize: 13, opacity: 0.7 }}>An uploaded photo takes priority over the Image URL above.</span>
+                      </div>
 
                       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
                         <button
@@ -997,6 +1121,13 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                     </div>
                   ) : (
                     <>
+                      {(sub.has_image || sub.image_url) && (
+                        <img
+                          src={sub.has_image ? `/api/submissions/${sub.id}/image` : sub.image_url!}
+                          alt=""
+                          style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }}
+                        />
+                      )}
                       <div style={{ fontSize: 13 }}>
                         <strong>Submitted by:</strong>{' '}
                         <a href={`mailto:${sub.submitter_email}`} style={{ color: 'inherit' }}>{sub.submitter_email}</a>

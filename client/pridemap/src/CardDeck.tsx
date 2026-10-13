@@ -8,6 +8,7 @@ interface Card {
     latitude: number | null;
     longitude: number | null;
     url: string | null;
+    image_url: string | null;
     categories: string[];
 }
 
@@ -47,6 +48,7 @@ const CardDeck = ({title, onLocationSelect, categoryFilter, searchQuery = ''}: {
                         description={card.description || 'No description available'} 
                         buttonText={card.url ? 'Visit Website' : 'Learn More'}
                         url={card.url}
+                        imageUrl={card.image_url}
                         latitude={card.latitude}
                         longitude={card.longitude}
                         categories={card.categories}
