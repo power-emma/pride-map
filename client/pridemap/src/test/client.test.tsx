@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ─── Leaflet / react-leaflet mocks ───────────────────────────────────────────
@@ -40,8 +40,11 @@ import CardComponent from '../CardComponent';
 import CardDeck from '../CardDeck';
 import MarkerComponent from '../MarkerComponent';
 import LocationSidebar from '../components/LocationSidebar';
+import ImageUploadControl from '../components/ImageUploadControl';
 import App from '../App';
 import CreateLocationPage from '../CreateLocationPage';
+import i18n from '../i18n';
+import { localizedApiError } from '../localizedApiError';
 
 // ─── CreateLocationPage geocoding ───────────────────────────────────────────
 describe('CreateLocationPage', () => {
@@ -127,6 +130,43 @@ describe('Header', () => {
         expect(screen.getByRole('link', { name: /manage locations/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
         expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument();
+    });
+
+    it('changes the interface language and updates the document language', async () => {
+        const user = userEvent.setup();
+        render(<MemoryRouter><Header /></MemoryRouter>);
+
+        await user.click(screen.getByRole('button', { name: /menu/i }));
+        const switchLanguageButton = screen.getByRole('button', { name: 'Switch language to French' });
+        expect(switchLanguageButton).toHaveTextContent('Français');
+        expect(switchLanguageButton.parentElement?.lastElementChild).toBe(switchLanguageButton);
+        await user.click(switchLanguageButton);
+        expect(screen.getByRole('link', { name: 'Proposer une entreprise' })).toBeInTheDocument();
+        expect(document.documentElement).toHaveAttribute('lang', 'fr');
+        expect(screen.getByRole('button', { name: 'Changer la langue pour l’anglais' })).toHaveTextContent('English');
+
+        await act(async () => { await i18n.changeLanguage('en'); });
+    });
+});
+
+describe('ImageUploadControl', () => {
+    it('localizes the save-first notice when French is selected', async () => {
+        await act(async () => { await i18n.changeLanguage('fr'); });
+        render(<ImageUploadControl authToken="token" uploadUrl={null} hasImage={false} onChange={() => {}} />);
+        expect(screen.getByText('Enregistrez d’abord, puis vous pourrez téléverser une photo ici.')).toBeInTheDocument();
+        await act(async () => { await i18n.changeLanguage('en'); });
+    });
+});
+
+describe('localizedApiError', () => {
+    it('translates known API errors and preserves HTTP status in the selected language', async () => {
+        const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+        await act(async () => { await i18n.changeLanguage('fr'); });
+        expect(localizedApiError('LOCATION_NOT_FOUND', 404)).toBe('Lieu introuvable.');
+        expect(localizedApiError('UNRECOGNIZED_SERVER_ERROR', 503)).toContain('HTTP 503');
+        expect(errorLog).toHaveBeenCalledWith('Unrecognized API error code:', 'UNRECOGNIZED_SERVER_ERROR');
+        errorLog.mockRestore();
+        await act(async () => { await i18n.changeLanguage('en'); });
     });
 });
 
@@ -304,6 +344,25 @@ describe('CardDeck', () => {
             expect(screen.getByText('Housing and Shelter')).toBeInTheDocument();
         });
     });
+
+    it('displays French listing content when it is available', async () => {
+        const user = userEvent.setup();
+        await act(async () => { await i18n.changeLanguage('fr'); });
+        (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            json: () => Promise.resolve([{
+                ...mockCards[0],
+                name_fr: 'Comité de lutte contre le sida d’Ottawa',
+                description_fr: 'Soutien communautaire.',
+            }]),
+        });
+
+        render(<CardDeck title="Services" />);
+        await user.click(await screen.findByRole('button', { name: /comité de lutte/i }));
+        expect(screen.getByText('Soutien communautaire.')).toBeInTheDocument();
+        expect(screen.getByText('Organismes communautaires')).toBeInTheDocument();
+
+        await act(async () => { await i18n.changeLanguage('en'); });
+    });
 });
 
 // ─── MarkerComponent ─────────────────────────────────────────────────────────
@@ -345,6 +404,26 @@ describe('LocationSidebar', () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it('uses French content when available and falls back to English when it is missing', async () => {
+        await act(async () => { await i18n.changeLanguage('fr'); });
+        render(
+            <LocationSidebar
+                location={{
+                    name: 'English Name',
+                    nameFr: 'Nom français',
+                    description: 'English description',
+                    descriptionFr: null,
+                }}
+                onClose={() => {}}
+            />
+        );
+
+        expect(screen.getByText('Nom français')).toBeInTheDocument();
+        expect(screen.getByText('English description')).toBeInTheDocument();
+        expect(screen.getByText('À propos')).toBeInTheDocument();
+        await act(async () => { await i18n.changeLanguage('en'); });
     });
 });
 

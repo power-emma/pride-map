@@ -8,9 +8,8 @@ router.get('/', async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching categories:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
 module.exports = router;
-

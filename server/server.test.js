@@ -205,7 +205,7 @@ describe('POST /locations', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ description: 'No name here' });
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+            expect(res.body).toHaveProperty('code', 'NAME_REQUIRED');
     });
 
     it('should return 400 when latitude is not a number', async () => {
@@ -214,7 +214,7 @@ describe('POST /locations', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ name: 'Bad Coords', latitude: 'not-a-number', category_ids: [] });
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'INVALID_COORDINATES');
     });
 });
 
@@ -239,6 +239,7 @@ describe('PUT /locations/:id', () => {
             .put('/locations/1')
             .send({ name: 'Updated Name', category_ids: [] });
         expect(res.statusCode).toBe(401);
+        expect(res.body).toHaveProperty('code', 'UNAUTHENTICATED');
     });
 
     it('should return 404 when the location does not exist', async () => {
@@ -248,7 +249,7 @@ describe('PUT /locations/:id', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ name: 'Ghost', category_ids: [] });
         expect(res.statusCode).toBe(404);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'LOCATION_NOT_FOUND');
     });
 
     it('should return 400 for an invalid id', async () => {
@@ -257,7 +258,7 @@ describe('PUT /locations/:id', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ name: 'Bad ID', category_ids: [] });
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'INVALID_LOCATION_ID');
     });
 });
 
@@ -282,7 +283,7 @@ describe('DELETE /locations/:id', () => {
             .delete('/locations/9999')
             .set('Authorization', `Bearer ${makeToken()}`);
         expect(res.statusCode).toBe(404);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'LOCATION_NOT_FOUND');
     });
 
     it('should return 400 for an invalid id', async () => {
@@ -290,7 +291,114 @@ describe('DELETE /locations/:id', () => {
             .delete('/locations/abc')
             .set('Authorization', `Bearer ${makeToken()}`);
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'INVALID_LOCATION_ID');
+    });
+});
+
+describe('Events', () => {
+    const eventBody = {
+        title: '',
+        title_fr: 'Fête de la fierté',
+        description: 'A community celebration.',
+        description_fr: 'Une célébration communautaire.',
+        event_date: '2030-06-20',
+        city: 'Ottawa',
+    };
+
+    it('returns a stable code when required event title is missing', async () => {
+        const res = await request(app)
+            .post('/events')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send({ ...eventBody, title_fr: '' });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({ code: 'TITLE_REQUIRED' });
+    });
+
+    it('returns French event content from the public endpoint', async () => {
+        pool.query.mockResolvedValueOnce({
+            rows: [{
+                id: 1,
+                title: 'Fête de la fierté',
+                title_fr: 'Fête de la fierté',
+                description: 'A community celebration.',
+                description_fr: 'Une célébration communautaire.',
+            }],
+            rowCount: 1,
+        });
+
+        const res = await request(app).get('/events');
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body[0]).toMatchObject({
+            title_fr: 'Fête de la fierté',
+            description_fr: 'Une célébration communautaire.',
+        });
+    });
+
+    it('creates an event with French-only title and content', async () => {
+        pool.query.mockResolvedValueOnce({
+            rows: [{ id: 12, title: 'Fête de la fierté', title_fr: 'Fête de la fierté', description_fr: eventBody.description_fr }],
+            rowCount: 1,
+        });
+
+        const res = await request(app)
+            .post('/events')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send(eventBody);
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body).toMatchObject({
+            title: 'Fête de la fierté',
+            title_fr: 'Fête de la fierté',
+            description_fr: 'Une célébration communautaire.',
+        });
+        expect(pool.query.mock.calls[0][1]).toEqual([
+            'Fête de la fierté',
+            'Fête de la fierté',
+            'A community celebration.',
+            'Une célébration communautaire.',
+            '2030-06-20',
+            null,
+            null,
+            null,
+            'Ottawa',
+            null,
+            null,
+        ]);
+    });
+
+    it('updates bilingual event content', async () => {
+        pool.query.mockResolvedValueOnce({
+            rows: [{ id: 12, title: 'Pride celebration', title_fr: 'Fête de la fierté', description_fr: eventBody.description_fr }],
+            rowCount: 1,
+        });
+
+        const res = await request(app)
+            .put('/events/12')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send({ ...eventBody, title: 'Pride celebration' });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toMatchObject({
+            title: 'Pride celebration',
+            title_fr: 'Fête de la fierté',
+            description_fr: 'Une célébration communautaire.',
+        });
+        expect(pool.query.mock.calls[0][1]).toEqual([
+            'Pride celebration',
+            'Fête de la fierté',
+            'A community celebration.',
+            'Une célébration communautaire.',
+            '2030-06-20',
+            null,
+            null,
+            null,
+            'Ottawa',
+            null,
+            null,
+            12,
+        ]);
     });
 });
 
@@ -318,7 +426,7 @@ describe('Submissions', () => {
             mockTurnstile(false);
             const res = await request(app).post('/submissions').send(validBody);
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error');
+            expect(res.body).toHaveProperty('code', 'CAPTCHA_VERIFICATION_FAILED');
         });
 
         it('should return 400 when the email is invalid', async () => {
@@ -327,7 +435,7 @@ describe('Submissions', () => {
                 .post('/submissions')
                 .send({ ...validBody, submitter_email: 'not-an-email' });
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error');
+            expect(res.body).toHaveProperty('code', 'A_VALID_EMAIL_REQUIRED');
         });
 
         it('should return 400 when the name is missing', async () => {
@@ -350,6 +458,38 @@ describe('Submissions', () => {
             const second = await request(app).post('/submissions').send(validBody);
             expect(second.statusCode).toBe(429);
             expect(second.headers).toHaveProperty('retry-after');
+        });
+
+        it('accepts a French-only name and stores its French content', async () => {
+            mockTurnstile(true);
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 43 }], rowCount: 1 });
+
+            const res = await request(app)
+                .post('/submissions')
+                .set('X-Forwarded-For', '192.0.2.43')
+                .send({
+                    name: '',
+                    name_fr: 'Café arc-en-ciel',
+                    description_fr: 'Un espace communautaire.',
+                    submitter_email: 'owner@example.com',
+                    captchaToken: 'dummy-token',
+                    category_ids: [],
+                });
+
+            expect(res.statusCode).toBe(201);
+            expect(pool.query.mock.calls[0][1]).toEqual([
+                'Café arc-en-ciel',
+                'Café arc-en-ciel',
+                null,
+                'Un espace communautaire.',
+                null,
+                null,
+                null,
+                null,
+                null,
+                'owner@example.com',
+                [],
+            ]);
         });
     });
 

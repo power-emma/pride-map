@@ -48,7 +48,7 @@ app.use('/events', eventsRoute);
 app.use((err, req, res, next) => {
     console.error('Unhandled route error:', err);
     if (!res.headersSent) {
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
     }
 });
 
@@ -61,4 +61,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-

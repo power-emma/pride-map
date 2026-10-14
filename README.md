@@ -59,6 +59,22 @@ Existing databases need the new `submissions` table:
 psql -U pridemap -d pridemap -f server/add-submissions-table.sql
 ```
 
+To bring an existing database up to date for French content, event links, and
+image uploads, run the migrations in this order:
+
+```
+psql -U pridemap -d pridemap -f server/add-french-location-content.sql
+psql -U pridemap -d pridemap -f server/add-events-table.sql
+psql -U pridemap -d pridemap -f server/add-french-event-content.sql
+psql -U pridemap -d pridemap -f server/add-image-columns.sql
+psql -U pridemap -d pridemap -f server/add-image-blob-columns.sql
+```
+
+Existing names and descriptions remain the English content; French fields are
+optional and the website falls back to English when a French translation is
+not available. `setup-db.sh` applies these migrations automatically and checks
+that the required columns exist before reporting success.
+
 ## Initial Release Plans
 - Now hosting initial map with client data
 - Next significant release will include CRUD using an SQL database

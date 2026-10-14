@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
     authToken?: string | null;
@@ -8,6 +9,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ authToken, onLogout, children }) => {
+    const { t, i18n: locale } = useTranslation();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -40,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({ authToken, onLogout, children })
                 <button
                     type="button"
                     className="site-header__menu-toggle"
-                    aria-label="Menu"
+                    aria-label={t('header.menu')}
                     aria-haspopup="true"
                     aria-expanded={menuOpen}
                     onClick={() => setMenuOpen(open => !open)}
@@ -58,14 +60,14 @@ export const Header: React.FC<HeaderProps> = ({ authToken, onLogout, children })
                             className="site-header__dropdown-item"
                             onClick={() => setMenuOpen(false)}
                         >
-                            Submit a Business
+                            {t('header.submitBusiness')}
                         </Link>
                         <Link
                             to="/manage-locations"
                             className="site-header__dropdown-item"
                             onClick={() => setMenuOpen(false)}
                         >
-                            {authToken ? 'Manage Locations' : 'Sign in'}
+                            {authToken ? t('header.manageLocations') : t('header.signIn')}
                         </Link>
                         {authToken && onLogout && (
                             <button
@@ -73,9 +75,17 @@ export const Header: React.FC<HeaderProps> = ({ authToken, onLogout, children })
                                 className="site-header__dropdown-item"
                                 onClick={() => { setMenuOpen(false); onLogout(); }}
                             >
-                                Sign out
+                                {t('header.signOut')}
                             </button>
                         )}
+                        <button
+                            type="button"
+                            className="site-header__dropdown-item"
+                            aria-label={locale.language.startsWith('fr') ? t('header.switchToEnglish') : t('header.switchToFrench')}
+                            onClick={() => { void locale.changeLanguage(locale.language.startsWith('fr') ? 'en' : 'fr'); }}
+                        >
+                            {locale.language.startsWith('fr') ? t('header.english') : t('header.french')}
+                        </button>
                     </nav>
                 )}
             </div>

@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18nInstance from './i18n';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
 import ImageUploadControl from './components/ImageUploadControl';
 import { CITY_NAME } from './config';
+import { localizedApiError } from './localizedApiError';
 
 type Category = { id: number; name: string };
 
 type Location = {
   id: number;
   name: string;
+  name_fr: string | null;
   description: string | null;
+  description_fr: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -21,7 +26,9 @@ type Location = {
 type EventItem = {
   id: number;
   title: string;
+  title_fr: string | null;
   description: string | null;
+  description_fr: string | null;
   event_date: string;
   event_time: string | null;
   location: string | null;
@@ -39,7 +46,9 @@ type EventItem = {
 type Submission = {
   id: number;
   name: string;
+  name_fr: string | null;
   description: string | null;
+  description_fr: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -87,6 +96,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 export default function ManageLocationsPage({ authToken, onAuthError }: ManageLocationsPageProps) {
+  const { t, i18n } = useTranslation();
   const [locations, setLocations] = useState<Location[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +112,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   // Inline editing of a pending submission before approval.
   const [editingSubmissionId, setEditingSubmissionId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState({
-    name: '', email: '', description: '', address: '',
+    name: '', nameFr: '', email: '', description: '', descriptionFr: '', address: '',
     latitude: '', longitude: '', url: '', imageUrl: '', categoryIds: [] as number[],
   });
   const [savingSubmission, setSavingSubmission] = useState(false);
@@ -113,7 +123,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const [eventMode, setEventMode] = useState<'idle' | 'edit' | 'create'>('idle');
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [eventTitle, setEventTitle] = useState('');
+  const [eventTitleFr, setEventTitleFr] = useState('');
   const [eventDescription, setEventDescription] = useState('');
+  const [eventDescriptionFr, setEventDescriptionFr] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventTime, setEventTime] = useState('');
   const [eventLocation, setEventLocation] = useState('');
@@ -135,7 +147,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
   // Shared form state (used for both edit and create)
   const [name, setName] = useState('');
+  const [nameFr, setNameFr] = useState('');
   const [description, setDescription] = useState('');
+  const [descriptionFr, setDescriptionFr] = useState('');
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -163,7 +177,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         setLocations(locs);
         setCategories(cats);
       })
-      .catch(err => setLoadError(err.message ?? 'Failed to load data'))
+      .catch(err => {
+        console.error('Failed to load admin location data:', err);
+        setLoadError(i18nInstance.t('errors.network'));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -176,14 +193,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     })
       .then(async (res) => {
         if (res.status === 401) { onAuthError(); return []; }
-        if (!res.ok) throw new Error(`Failed to load submissions (${res.status})`);
+        if (!res.ok) throw new Error(String(res.status));
         return res.json();
       })
       .then((rows: Submission[]) => {
         if (!cancelled) setSubmissions(rows ?? []);
       })
       .catch((err) => {
-        if (!cancelled) setSubmissionsError(err instanceof Error ? err.message : 'Failed to load submissions');
+        if (!cancelled) {
+          console.error('Failed to load submissions:', err);
+          setSubmissionsError(i18nInstance.t('errors.network'));
+        }
       });
     return () => { cancelled = true; };
   }, [authToken, onAuthError]);
@@ -197,14 +217,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     })
       .then(async (res) => {
         if (res.status === 401) { onAuthError(); return []; }
-        if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
+        if (!res.ok) throw new Error(String(res.status));
         return res.json();
       })
       .then((rows: EventItem[]) => {
         if (!cancelled) setEvents(rows ?? []);
       })
       .catch((err) => {
-        if (!cancelled) setEventsError(err instanceof Error ? err.message : 'Failed to load events');
+        if (!cancelled) {
+          console.error('Failed to load events:', err);
+          setEventsError(i18nInstance.t('errors.network'));
+        }
       });
     return () => { cancelled = true; };
   }, [authToken, onAuthError]);
@@ -231,14 +254,16 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSubmissionsError(json?.error ?? `Failed to approve (${res.status})`);
+        setSubmissionsError(localizedApiError(json?.code, res.status));
         return;
       }
       // Reflect the new live location without a refetch.
       const newLoc: Location = {
         id: json.locationId,
         name: sub.name,
+        name_fr: sub.name_fr,
         description: sub.description,
+        description_fr: sub.description_fr,
         address: sub.address,
         latitude: sub.latitude,
         longitude: sub.longitude,
@@ -250,7 +275,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
       setSubmissions(prev => prev.filter(s => s.id !== sub.id));
     } catch (err) {
-      setSubmissionsError(err instanceof Error ? err.message : 'Failed to approve');
+      console.error('Failed to approve submission:', err);
+      setSubmissionsError(t('errors.network'));
     } finally {
       setBusySubmissionId(null);
     }
@@ -267,12 +293,13 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSubmissionsError(json?.error ?? `Failed to reject (${res.status})`);
+        setSubmissionsError(localizedApiError(json?.code, res.status));
         return;
       }
       setSubmissions(prev => prev.filter(s => s.id !== sub.id));
     } catch (err) {
-      setSubmissionsError(err instanceof Error ? err.message : 'Failed to reject');
+      console.error('Failed to reject submission:', err);
+      setSubmissionsError(t('errors.network'));
     } finally {
       setBusySubmissionId(null);
     }
@@ -283,8 +310,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setEditingSubmissionId(sub.id);
     setEditDraft({
       name: sub.name,
+      nameFr: sub.name_fr ?? '',
       email: sub.submitter_email,
       description: sub.description ?? '',
+      descriptionFr: sub.description_fr ?? '',
       address: sub.address ?? '',
       latitude: sub.latitude != null ? String(sub.latitude) : '',
       longitude: sub.longitude != null ? String(sub.longitude) : '',
@@ -304,14 +333,16 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const lat = toNullableNumber(editDraft.latitude);
     const lng = toNullableNumber(editDraft.longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setSubmissionsError('Latitude/Longitude must be valid numbers (or left blank).');
+      setSubmissionsError(t('errors.invalidCoordinates'));
       return;
     }
 
     const payload = {
       name: editDraft.name.trim(),
+      name_fr: toNullIfEmpty(editDraft.nameFr),
       submitter_email: editDraft.email.trim(),
       description: toNullIfEmpty(editDraft.description),
+      description_fr: toNullIfEmpty(editDraft.descriptionFr),
       address: toNullIfEmpty(editDraft.address),
       latitude: lat,
       longitude: lng,
@@ -333,14 +364,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSubmissionsError(json?.error ?? `Failed to save (${res.status})`);
+        setSubmissionsError(localizedApiError(json?.code, res.status));
         return;
       }
       // Merge the saved values back into the list.
       setSubmissions(prev => prev.map(s => (s.id === sub.id ? { ...s, ...json } : s)));
       setEditingSubmissionId(null);
     } catch (err) {
-      setSubmissionsError(err instanceof Error ? err.message : 'Failed to save');
+      console.error('Failed to save submission:', err);
+      setSubmissionsError(t('errors.network'));
     } finally {
       setSavingSubmission(false);
     }
@@ -348,7 +380,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
   function clearForm() {
     setName('');
+    setNameFr('');
     setDescription('');
+    setDescriptionFr('');
     setAddress('');
     setLatitude('');
     setLongitude('');
@@ -367,7 +401,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const query = address.trim();
     if (!query) {
       setGeocodeResults([]);
-      setGeocodeError('Enter a street address before geocoding.');
+      setGeocodeError(t('admin.geocodeAddress'));
       return;
     }
 
@@ -380,7 +414,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       );
 
       if (!response.ok) {
-        throw new Error(`Geocoding failed (${response.status})`);
+        throw new Error(String(response.status));
       }
 
       const data = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
@@ -395,14 +429,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
       if (results.length === 0) {
         setGeocodeResults([]);
-        setGeocodeError('No matching addresses found. Try a more specific street address.');
+        setGeocodeError(t('admin.noAddresses'));
         return;
       }
 
       setGeocodeResults(results);
     } catch (err) {
       setGeocodeResults([]);
-      setGeocodeError(err instanceof Error ? err.message : 'Could not geocode this address.');
+      console.error('Could not geocode address:', err);
+      setGeocodeError(t('admin.geocodeFailed'));
     } finally {
       setGeocoding(false);
     }
@@ -421,7 +456,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setSelectedId(loc.id);
     setMode('edit');
     setName(loc.name);
+    setNameFr(loc.name_fr ?? '');
     setDescription(loc.description ?? '');
+    setDescriptionFr(loc.description_fr ?? '');
     setAddress(loc.address ?? '');
     setLatitude(loc.latitude != null ? String(loc.latitude) : '');
     setLongitude(loc.longitude != null ? String(loc.longitude) : '');
@@ -446,13 +483,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const lat = toNullableNumber(latitude);
     const lng = toNullableNumber(longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setSaveError('Latitude/Longitude must be valid numbers (or left blank).');
+      setSaveError(t('errors.invalidCoordinates'));
       return;
     }
 
     const payload = {
       name: name.trim(),
+      name_fr: toNullIfEmpty(nameFr),
       description: toNullIfEmpty(description),
+      description_fr: toNullIfEmpty(descriptionFr),
       address: toNullIfEmpty(address),
       latitude: lat,
       longitude: lng,
@@ -474,7 +513,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSaveError(json?.error ?? `Failed to save (${res.status})`);
+        setSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
@@ -485,9 +524,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
             : l
         )
       );
-      setSaveSuccess('Saved successfully.');
+      setSaveSuccess(t('admin.savedSuccessfully'));
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save');
+      console.error('Failed to save location:', err);
+      setSaveError(t('errors.network'));
     } finally {
       setSaving(false);
     }
@@ -501,13 +541,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const lat = toNullableNumber(latitude);
     const lng = toNullableNumber(longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setSaveError('Latitude/Longitude must be valid numbers (or left blank).');
+      setSaveError(t('errors.invalidCoordinates'));
       return;
     }
 
     const payload = {
       name: name.trim(),
+      name_fr: toNullIfEmpty(nameFr),
       description: toNullIfEmpty(description),
+      description_fr: toNullIfEmpty(descriptionFr),
       address: toNullIfEmpty(address),
       latitude: lat,
       longitude: lng,
@@ -529,18 +571,19 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSaveError(json?.error ?? `Failed to create (${res.status})`);
+        setSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
       const newLoc: Location = { id: json.id, ...payload, has_image: false, category_ids: payload.category_ids };
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
-      setSaveSuccess('Location created.');
+      setSaveSuccess(t('admin.locationCreated'));
       // Switch to editing the new location
       setSelectedId(json.id);
       setMode('edit');
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to create');
+      console.error('Failed to create location:', err);
+      setSaveError(t('errors.network'));
     } finally {
       setSaving(false);
     }
@@ -562,7 +605,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSaveError(json?.error ?? `Failed to delete (${res.status})`);
+        setSaveError(localizedApiError(json?.code, res.status));
         setDeleting(false);
         return;
       }
@@ -571,7 +614,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       setMode('idle');
       setConfirmDelete(false);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to delete');
+      console.error('Failed to delete location:', err);
+      setSaveError(t('errors.network'));
     } finally {
       setDeleting(false);
     }
@@ -579,7 +623,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
   function clearEventForm() {
     setEventTitle('');
+    setEventTitleFr('');
     setEventDescription('');
+    setEventDescriptionFr('');
     setEventDate('');
     setEventTime('');
     setEventLocation('');
@@ -598,7 +644,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setSelectedEventId(ev.id);
     setEventMode('edit');
     setEventTitle(ev.title);
+    setEventTitleFr(ev.title_fr ?? '');
     setEventDescription(ev.description ?? '');
+    setEventDescriptionFr(ev.description_fr ?? '');
     setEventDate(ev.event_date.slice(0, 10));
     setEventTime(ev.event_time ?? '');
     setEventLocation(ev.location ?? '');
@@ -618,7 +666,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   function eventPayload() {
     return {
       title: eventTitle.trim(),
+      title_fr: toNullIfEmpty(eventTitleFr),
       description: toNullIfEmpty(eventDescription),
+      description_fr: toNullIfEmpty(eventDescriptionFr),
       event_date: eventDate,
       event_time: toNullIfEmpty(eventTime),
       location: toNullIfEmpty(eventLocation),
@@ -647,16 +697,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setEventSaveError(json?.error ?? `Failed to create (${res.status})`);
+        setEventSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
       setEvents(prev => [...prev, { ...json, has_image: false }].sort((a, b) => a.event_date.localeCompare(b.event_date)));
-      setEventSaveSuccess('Event created.');
+      setEventSaveSuccess(t('admin.eventCreated'));
       setSelectedEventId(json.id);
       setEventMode('edit');
     } catch (err) {
-      setEventSaveError(err instanceof Error ? err.message : 'Failed to create');
+      console.error('Failed to create event:', err);
+      setEventSaveError(t('errors.network'));
     } finally {
       setEventSaving(false);
     }
@@ -681,7 +732,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setEventSaveError(json?.error ?? `Failed to save (${res.status})`);
+        setEventSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
@@ -696,9 +747,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         location_image_url: linkedLoc?.image_url ?? null,
         location_has_image: linkedLoc?.has_image ?? false,
       } : ev)));
-      setEventSaveSuccess('Saved successfully.');
+      setEventSaveSuccess(t('admin.savedSuccessfully'));
     } catch (err) {
-      setEventSaveError(err instanceof Error ? err.message : 'Failed to save');
+      console.error('Failed to save event:', err);
+      setEventSaveError(t('errors.network'));
     } finally {
       setEventSaving(false);
     }
@@ -720,7 +772,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setEventSaveError(json?.error ?? `Failed to delete (${res.status})`);
+        setEventSaveError(localizedApiError(json?.code, res.status));
         setEventDeleting(false);
         return;
       }
@@ -729,7 +781,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       setEventMode('idle');
       setConfirmEventDelete(false);
     } catch (err) {
-      setEventSaveError(err instanceof Error ? err.message : 'Failed to delete');
+      console.error('Failed to delete event:', err);
+      setEventSaveError(t('errors.network'));
     } finally {
       setEventDeleting(false);
     }
@@ -739,18 +792,23 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
   const selectedLocation = locations.find(l => l.id === selectedId) ?? null;
 
-  if (loading) return <div style={{ padding: '2rem' }}>Loading…</div>;
-  if (loadError) return <div style={{ padding: '2rem', color: '#ff5a5a' }}>Error: {loadError}</div>;
+  if (loading) return <div style={{ padding: '2rem' }}>{t('admin.loading')}</div>;
+  if (loadError) return <div style={{ padding: '2rem', color: '#ff5a5a' }}>{t('admin.error')}: {loadError}</div>;
 
   const sharedForm = (isCreate: boolean) => (
     <form onSubmit={isCreate ? handleCreate : handleSave} style={{ display: 'grid', gap: '0.75rem' }}>
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Name *</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.englishName')}</span>
         <input value={name} onChange={e => setName(e.target.value)} required style={inputStyle} />
       </label>
 
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>{t('admin.frenchName')}</span>
+        <input value={nameFr} onChange={e => setNameFr(e.target.value)} style={inputStyle} />
+      </label>
+
       <div style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Categories</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.categories')}</span>
         <CategoryCheckboxes
           categories={categories}
           loading={false}
@@ -760,12 +818,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       </div>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Description</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.englishDescription')}</span>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} style={inputStyle} />
       </label>
 
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>{t('admin.frenchDescription')}</span>
+        <textarea value={descriptionFr} onChange={e => setDescriptionFr(e.target.value)} rows={4} style={inputStyle} />
+      </label>
+
       <div style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Address</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.address')}</span>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'start' }}>
           <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
           <button
@@ -781,7 +844,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               opacity: geocoding || address.trim().length === 0 ? 0.65 : 1,
             }}
           >
-            {geocoding ? 'Geocoding…' : 'Geocode'}
+            {geocoding ? t('admin.geocoding') : t('admin.geocode')}
           </button>
         </div>
 
@@ -791,7 +854,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
         {geocodeResults.length > 0 && (
           <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.25rem' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8 }}>Choose a matching address</div>
+            <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8 }}>{t('admin.chooseAddress')}</div>
             <div
               style={{
                 display: 'grid',
@@ -830,25 +893,25 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
         <label style={labelStyle}>
-          <span style={{ fontWeight: 600 }}>Latitude</span>
+          <span style={{ fontWeight: 600 }}>{t('admin.latitude')}</span>
           <input value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 45.421" inputMode="decimal" style={inputStyle} />
         </label>
         <label style={labelStyle}>
-          <span style={{ fontWeight: 600 }}>Longitude</span>
+          <span style={{ fontWeight: 600 }}>{t('admin.longitude')}</span>
           <input value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -75.690" inputMode="decimal" style={inputStyle} />
         </label>
       </div>
       <div style={{ fontSize: 13, opacity: 0.7 }}>
-        Coordinates are optional but required for a map pin.
+        {t('admin.coordinatesHelp')}
       </div>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Website URL</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.website')}</span>
         <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
       </label>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Image URL</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.imageUrl')}</span>
         <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://example.org/photo.jpg" style={inputStyle} />
       </label>
       {!hasImage && imageUrl.trim() && (
@@ -856,14 +919,14 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       )}
 
       <div style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Upload Image</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.uploadImage')}</span>
         <ImageUploadControl
           authToken={authToken}
           uploadUrl={!isCreate && selectedId != null ? `/api/locations/${selectedId}/image` : null}
           hasImage={hasImage}
           onChange={setHasImage}
         />
-        <span style={{ fontSize: 13, opacity: 0.7 }}>An uploaded photo takes priority over the Image URL above.</span>
+        <span style={{ fontSize: 13, opacity: 0.7 }}>{t('admin.uploadedImageHelp')}</span>
       </div>
 
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
@@ -872,7 +935,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
           disabled={saving || name.trim().length === 0}
           style={{ padding: '0.6rem 1.1rem', borderRadius: 8, border: '1px solid #444', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' }}
         >
-          {saving ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Location' : 'Save Changes')}
+          {saving ? (isCreate ? t('admin.creating') : t('admin.saving')) : (isCreate ? t('admin.createLocation') : t('admin.saveChanges'))}
         </button>
 
         {!isCreate && (
@@ -889,7 +952,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               cursor: deleting ? 'not-allowed' : 'pointer',
             }}
           >
-            {deleting ? 'Deleting…' : confirmDelete ? 'Confirm Delete' : 'Delete'}
+            {deleting ? t('admin.deleting') : confirmDelete ? t('admin.confirmDelete') : t('admin.delete')}
           </button>
         )}
 
@@ -899,7 +962,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
             onClick={() => setConfirmDelete(false)}
             style={{ padding: '0.6rem 0.9rem', borderRadius: 8, border: '1px solid #444', cursor: 'pointer' }}
           >
-            Cancel
+            {t('admin.cancel')}
           </button>
         )}
       </div>
@@ -919,68 +982,78 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const eventForm = (isCreate: boolean) => (
     <form onSubmit={isCreate ? handleEventCreate : handleEventSave} style={{ display: 'grid', gap: '0.75rem' }}>
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Title *</span>
-        <input value={eventTitle} onChange={e => setEventTitle(e.target.value)} required style={inputStyle} />
+        <span style={{ fontWeight: 600 }}>{t('admin.eventsTitle')}</span>
+        <input value={eventTitle} onChange={e => setEventTitle(e.target.value)} style={inputStyle} />
+      </label>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>{t('admin.eventTitleFrench')}</span>
+        <input value={eventTitleFr} onChange={e => setEventTitleFr(e.target.value)} style={inputStyle} />
       </label>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
         <label style={labelStyle}>
-          <span style={{ fontWeight: 600 }}>Date *</span>
+          <span style={{ fontWeight: 600 }}>{t('admin.eventDate')}</span>
           <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} required style={inputStyle} />
         </label>
         <label style={labelStyle}>
-          <span style={{ fontWeight: 600 }}>Time</span>
+          <span style={{ fontWeight: 600 }}>{t('admin.eventTime')}</span>
           <input type="time" value={eventTime} onChange={e => setEventTime(e.target.value)} style={inputStyle} />
         </label>
       </div>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Description</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.eventDescriptionEnglish')}</span>
         <textarea value={eventDescription} onChange={e => setEventDescription(e.target.value)} rows={4} style={inputStyle} />
       </label>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Location / venue</span>
-        <input value={eventLocation} onChange={e => setEventLocation(e.target.value)} placeholder="e.g. Ottawa City Hall" style={inputStyle} />
+        <span style={{ fontWeight: 600 }}>{t('admin.eventDescriptionFrench')}</span>
+        <textarea value={eventDescriptionFr} onChange={e => setEventDescriptionFr(e.target.value)} rows={4} style={inputStyle} />
       </label>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Linked business (optional)</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.venue')}</span>
+        <input value={eventLocation} onChange={e => setEventLocation(e.target.value)} placeholder={t('admin.venuePlaceholder')} style={inputStyle} />
+      </label>
+
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>{t('admin.linkedBusiness')}</span>
         <select
           value={eventLocationId ?? ''}
           onChange={e => setEventLocationId(e.target.value ? Number(e.target.value) : null)}
           style={inputStyle}
         >
-          <option value="">None</option>
+          <option value="">{t('admin.none')}</option>
           {locations.map(loc => (
             <option key={loc.id} value={loc.id}>{loc.name}</option>
           ))}
         </select>
       </label>
       <div style={{ fontSize: 13, opacity: 0.7 }}>
-        If this event has no image of its own, the linked business's image is shown instead.
+        {t('admin.linkedImageHelp')}
       </div>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>City *</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.city')}</span>
         <input value={eventCity} onChange={e => setEventCity(e.target.value)} required style={inputStyle} />
       </label>
       <div style={{ fontSize: 13, opacity: 0.7 }}>
-        Must match "{CITY_NAME}" to show up in the "Happening in {CITY_NAME}" cards on the map.
+        {t('admin.cityMatchHelp', { city: CITY_NAME })}
       </div>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Website URL</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.website')}</span>
         <input value={eventUrl} onChange={e => setEventUrl(e.target.value)} placeholder="https://example.org" style={inputStyle} />
       </label>
 
       <label style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Image URL</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.imageUrl')}</span>
         <input value={eventImageUrl} onChange={e => setEventImageUrl(e.target.value)} placeholder="https://example.org/photo.jpg" style={inputStyle} />
       </label>
 
       <div style={labelStyle}>
-        <span style={{ fontWeight: 600 }}>Upload Image</span>
+        <span style={{ fontWeight: 600 }}>{t('admin.uploadImage')}</span>
         <ImageUploadControl
           authToken={authToken}
           uploadUrl={!isCreate && selectedEventId != null ? `/api/events/${selectedEventId}/image` : null}
@@ -998,7 +1071,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
           <div style={{ display: 'grid', gap: '0.3rem' }}>
             <img src={preview} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 8 }} />
             {!eventImageUrl.trim() && (
-              <span style={{ fontSize: 12, opacity: 0.6 }}>Using the linked business's image (no image set for this event).</span>
+              <span style={{ fontSize: 12, opacity: 0.6 }}>{t('admin.eventImageFallback')}</span>
             )}
           </div>
         );
@@ -1007,10 +1080,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
         <button
           type="submit"
-          disabled={eventSaving || eventTitle.trim().length === 0 || eventDate.trim().length === 0}
+          disabled={eventSaving || (eventTitle.trim().length === 0 && eventTitleFr.trim().length === 0) || eventDate.trim().length === 0}
           style={{ padding: '0.6rem 1.1rem', borderRadius: 8, border: '1px solid #444', fontWeight: 700, cursor: eventSaving ? 'not-allowed' : 'pointer' }}
         >
-          {eventSaving ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Event' : 'Save Changes')}
+          {eventSaving ? (isCreate ? t('admin.creating') : t('admin.saving')) : (isCreate ? t('admin.createEvent') : t('admin.saveChanges'))}
         </button>
 
         {!isCreate && (
@@ -1027,7 +1100,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               cursor: eventDeleting ? 'not-allowed' : 'pointer',
             }}
           >
-            {eventDeleting ? 'Deleting…' : confirmEventDelete ? 'Confirm Delete' : 'Delete'}
+            {eventDeleting ? t('admin.deleting') : confirmEventDelete ? t('admin.confirmDelete') : t('admin.delete')}
           </button>
         )}
 
@@ -1037,7 +1110,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
             onClick={() => setConfirmEventDelete(false)}
             style={{ padding: '0.6rem 0.9rem', borderRadius: 8, border: '1px solid #444', cursor: 'pointer' }}
           >
-            Cancel
+            {t('admin.cancel')}
           </button>
         )}
       </div>
@@ -1062,7 +1135,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               width: '100%',
             }}
           >
-            + Add Event
+            {t('admin.addEvent')}
           </button>
         </div>
         {eventsError && (
@@ -1070,7 +1143,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         )}
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {events.length === 0 && (
-            <div style={{ padding: '1rem', opacity: 0.6 }}>No events yet.</div>
+            <div style={{ padding: '1rem', opacity: 0.6 }}>{t('admin.noEvents')}</div>
           )}
           {events.map(ev => (
             <button
@@ -1089,7 +1162,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                 fontWeight: ev.id === selectedEventId && eventMode === 'edit' ? 700 : 400,
               }}
             >
-              <div style={{ fontSize: 14 }}>{ev.title}</div>
+              <div style={{ fontSize: 14 }}>{i18n.language.startsWith('fr') ? ev.title_fr || ev.title : ev.title}</div>
               <div style={{ fontSize: 12, opacity: 0.55, marginTop: 2 }}>
                 {ev.event_date.slice(0, 10)}{ev.event_time ? ` · ${ev.event_time.slice(0, 5)}` : ''} — {ev.city}
               </div>
@@ -1097,7 +1170,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
           ))}
         </div>
         <div style={{ padding: '0.6rem', borderTop: '1px solid #333', fontSize: 12, opacity: 0.5 }}>
-          {events.length} event{events.length !== 1 ? 's' : ''}
+          {t('admin.eventsPlural', { count: events.length })}
         </div>
       </div>
 
@@ -1105,13 +1178,13 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <div style={{ maxWidth: 640, width: '100%', margin: '0 auto' }}>
           {eventMode === 'idle' && (
             <div style={{ opacity: 0.5, marginTop: '2rem', textAlign: 'center' }}>
-              Select an event to edit it, or click <strong>+ Add Event</strong>.
+              {t('admin.selectEvent')} <strong>{t('admin.addEvent')}</strong>.
             </div>
           )}
 
           {eventMode === 'create' && (
             <>
-              <h2 style={{ margin: '0 0 1rem 0' }}>Add an Event</h2>
+              <h2 style={{ margin: '0 0 1rem 0' }}>{t('admin.addEventTitle')}</h2>
               {eventSaveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{eventSaveError}</div>}
               {eventSaveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{eventSaveSuccess}</div>}
               {eventForm(true)}
@@ -1120,7 +1193,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
           {eventMode === 'edit' && selectedEvent != null && (
             <>
-              <h2 style={{ margin: '0 0 1rem 0' }}>Edit: {selectedEvent.title}</h2>
+              <h2 style={{ margin: '0 0 1rem 0' }}>{t('admin.edit')}: {i18n.language.startsWith('fr') ? selectedEvent.title_fr || selectedEvent.title : selectedEvent.title}</h2>
               {eventSaveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{eventSaveError}</div>}
               {eventSaveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{eventSaveSuccess}</div>}
               {eventForm(false)}
@@ -1134,7 +1207,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const submissionsPanel = (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1.5rem' }}>
       <div style={{ maxWidth: 760, width: '100%', margin: '0 auto' }}>
-        <h2 style={{ margin: '0 0 1rem 0' }}>Pending Submissions</h2>
+        <h2 style={{ margin: '0 0 1rem 0' }}>{t('admin.pendingSubmissions')}</h2>
         {submissionsError && (
           <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>
             {submissionsError}
@@ -1142,7 +1215,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         )}
         {submissions.length === 0 ? (
           <div style={{ opacity: 0.6, marginTop: '2rem', textAlign: 'center' }}>
-            No pending submissions.
+            {t('admin.noPendingSubmissions')}
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '1rem' }}>
@@ -1156,24 +1229,28 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               return (
                 <div key={sub.id} style={{ border: '1px solid #333', borderRadius: 10, padding: '1rem', display: 'grid', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
-                    <h3 style={{ margin: 0 }}>{isEditing ? 'Editing submission' : sub.name}</h3>
+                    <h3 style={{ margin: 0 }}>{isEditing ? t('admin.editingSubmission') : sub.name}</h3>
                     <span style={{ fontSize: 12, opacity: 0.55 }}>
-                      {new Date(sub.created_at).toLocaleString()}
+                      {new Date(sub.created_at).toLocaleString(i18n.language === 'fr' ? 'fr-CA' : 'en-CA')}
                     </span>
                   </div>
 
                   {isEditing ? (
                     <div style={{ display: 'grid', gap: '0.6rem' }}>
                       <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Name *</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.englishName')}</span>
                         <input value={editDraft.name} onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))} style={inputStyle} />
                       </label>
                       <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Submitter email *</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.frenchName')}</span>
+                        <input value={editDraft.nameFr} onChange={e => setEditDraft(d => ({ ...d, nameFr: e.target.value }))} style={inputStyle} />
+                      </label>
+                      <label style={labelStyle}>
+                        <span style={{ fontWeight: 600 }}>{t('admin.submitterEmail')}</span>
                         <input value={editDraft.email} onChange={e => setEditDraft(d => ({ ...d, email: e.target.value }))} style={inputStyle} />
                       </label>
                       <div style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Categories</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.categories')}</span>
                         <CategoryCheckboxes
                           categories={categories}
                           loading={false}
@@ -1182,50 +1259,54 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                         />
                       </div>
                       <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Description</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.englishDescription')}</span>
                         <textarea value={editDraft.description} onChange={e => setEditDraft(d => ({ ...d, description: e.target.value }))} rows={4} style={inputStyle} />
                       </label>
                       <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Address</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.frenchDescription')}</span>
+                        <textarea value={editDraft.descriptionFr} onChange={e => setEditDraft(d => ({ ...d, descriptionFr: e.target.value }))} rows={4} style={inputStyle} />
+                      </label>
+                      <label style={labelStyle}>
+                        <span style={{ fontWeight: 600 }}>{t('admin.address')}</span>
                         <input value={editDraft.address} onChange={e => setEditDraft(d => ({ ...d, address: e.target.value }))} style={inputStyle} />
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                         <label style={labelStyle}>
-                          <span style={{ fontWeight: 600 }}>Latitude</span>
+                          <span style={{ fontWeight: 600 }}>{t('admin.latitude')}</span>
                           <input value={editDraft.latitude} onChange={e => setEditDraft(d => ({ ...d, latitude: e.target.value }))} placeholder="e.g. 45.421" inputMode="decimal" style={inputStyle} />
                         </label>
                         <label style={labelStyle}>
-                          <span style={{ fontWeight: 600 }}>Longitude</span>
+                          <span style={{ fontWeight: 600 }}>{t('admin.longitude')}</span>
                           <input value={editDraft.longitude} onChange={e => setEditDraft(d => ({ ...d, longitude: e.target.value }))} placeholder="e.g. -75.690" inputMode="decimal" style={inputStyle} />
                         </label>
                       </div>
                       <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Website URL</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.website')}</span>
                         <input value={editDraft.url} onChange={e => setEditDraft(d => ({ ...d, url: e.target.value }))} placeholder="https://example.org" style={inputStyle} />
                       </label>
                       <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Image URL</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.imageUrl')}</span>
                         <input value={editDraft.imageUrl} onChange={e => setEditDraft(d => ({ ...d, imageUrl: e.target.value }))} placeholder="https://example.org/photo.jpg" style={inputStyle} />
                       </label>
                       <div style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>Upload Image</span>
+                        <span style={{ fontWeight: 600 }}>{t('admin.uploadImage')}</span>
                         <ImageUploadControl
                           authToken={authToken}
                           uploadUrl={`/api/submissions/${sub.id}/image`}
                           hasImage={sub.has_image}
                           onChange={(has) => setSubmissions(prev => prev.map(s => (s.id === sub.id ? { ...s, has_image: has } : s)))}
                         />
-                        <span style={{ fontSize: 13, opacity: 0.7 }}>An uploaded photo takes priority over the Image URL above.</span>
+                        <span style={{ fontSize: 13, opacity: 0.7 }}>{t('admin.uploadedImageHelp')}</span>
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
                         <button
                           type="button"
                           onClick={() => saveSubmissionEdit(sub)}
-                          disabled={savingSubmission || editDraft.name.trim().length === 0}
+                          disabled={savingSubmission || (editDraft.name.trim().length === 0 && editDraft.nameFr.trim().length === 0)}
                           style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #4caf50', color: '#4caf50', fontWeight: 700, cursor: savingSubmission ? 'not-allowed' : 'pointer', background: 'transparent' }}
                         >
-                          {savingSubmission ? 'Saving…' : 'Save Changes'}
+                          {savingSubmission ? t('admin.saving') : t('admin.saveChanges')}
                         </button>
                         <button
                           type="button"
@@ -1233,7 +1314,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                           disabled={savingSubmission}
                           style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #444', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'inherit' }}
                         >
-                          Cancel
+                          {t('admin.cancel')}
                         </button>
                       </div>
                     </div>
@@ -1247,7 +1328,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                         />
                       )}
                       <div style={{ fontSize: 13 }}>
-                        <strong>Submitted by:</strong>{' '}
+                        <strong>{t('admin.submittedBy')}</strong>{' '}
                         <a href={`mailto:${sub.submitter_email}`} style={{ color: 'inherit' }}>{sub.submitter_email}</a>
                       </div>
 
@@ -1263,15 +1344,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                         <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', opacity: 0.9 }}>{sub.description}</div>
                       )}
                       {sub.address && (
-                        <div style={{ fontSize: 13 }}><strong>Address:</strong> {sub.address}</div>
+                        <div style={{ fontSize: 13 }}><strong>{t('admin.address')}:</strong> {sub.address}</div>
                       )}
                       <div style={{ fontSize: 13 }}>
-                        <strong>Coordinates:</strong>{' '}
-                        {hasPin ? `${sub.latitude}, ${sub.longitude}` : <span style={{ opacity: 0.6 }}>none (won't show as a pin)</span>}
+                        <strong>{t('admin.coordinates')}</strong>{' '}
+                        {hasPin ? `${sub.latitude}, ${sub.longitude}` : <span style={{ opacity: 0.6 }}>{t('admin.noPin')}</span>}
                       </div>
                       {sub.url && (
                         <div style={{ fontSize: 13 }}>
-                          <strong>Website:</strong>{' '}
+                          <strong>{t('admin.website')}:</strong>{' '}
                           <a href={sub.url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{sub.url}</a>
                         </div>
                       )}
@@ -1283,7 +1364,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                           disabled={busy}
                           style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #4caf50', color: '#4caf50', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent' }}
                         >
-                          {busy ? 'Working…' : 'Approve'}
+                          {busy ? t('admin.working') : t('admin.approve')}
                         </button>
                         <button
                           type="button"
@@ -1291,7 +1372,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                           disabled={busy}
                           style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #555', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: 'inherit' }}
                         >
-                          Edit
+                          {t('admin.edit')}
                         </button>
                         <button
                           type="button"
@@ -1299,7 +1380,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                           disabled={busy}
                           style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ff5a5a', color: '#ff5a5a', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent' }}
                         >
-                          {busy ? 'Working…' : 'Reject'}
+                          {busy ? t('admin.working') : t('admin.reject')}
                         </button>
                       </div>
                     </>
@@ -1317,13 +1398,13 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 72px)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid #333' }}>
         <button type="button" onClick={() => setView('locations')} style={tabBtnStyle(view === 'locations')}>
-          Locations
+          {t('admin.tabsLocations')}
         </button>
         <button type="button" onClick={() => setView('submissions')} style={tabBtnStyle(view === 'submissions')}>
-          Pending Submissions{submissions.length > 0 ? ` (${submissions.length})` : ''}
+          {submissions.length > 0 ? t('admin.submissionPlural', { count: submissions.length }) : t('admin.tabsSubmissions')}
         </button>
         <button type="button" onClick={() => setView('events')} style={tabBtnStyle(view === 'events')}>
-          Events{events.length > 0 ? ` (${events.length})` : ''}
+          {events.length > 0 ? t('admin.eventsPlural', { count: events.length }) : t('admin.tabsEvents')}
         </button>
       </div>
 
@@ -1346,18 +1427,18 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               textAlign: 'left',
             }}
           >
-            + Add Location
+            {t('admin.addLocation')}
           </button>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search locations…"
+            placeholder={t('admin.searchLocations')}
             style={{ ...inputStyle }}
           />
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {filteredLocations.length === 0 && (
-            <div style={{ padding: '1rem', opacity: 0.6 }}>No locations found.</div>
+            <div style={{ padding: '1rem', opacity: 0.6 }}>{t('admin.noLocations')}</div>
           )}
           {filteredLocations.map(loc => (
             <button
@@ -1382,7 +1463,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
           ))}
         </div>
         <div style={{ padding: '0.6rem', borderTop: '1px solid #333', fontSize: 12, opacity: 0.5 }}>
-          {filteredLocations.length} location{filteredLocations.length !== 1 ? 's' : ''}
+          {t('admin.locationsPlural', { count: filteredLocations.length })}
         </div>
       </div>
 
@@ -1391,13 +1472,13 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <div style={{ maxWidth: 640, width: '100%', margin: '0 auto' }}>
         {mode === 'idle' && (
           <div style={{ opacity: 0.5, marginTop: '2rem', textAlign: 'center' }}>
-            Select a location to edit it, or click <strong>+ Add Location</strong>.
+            {t('admin.selectLocation')} <strong>{t('admin.addLocation')}</strong>.
           </div>
         )}
 
         {mode === 'create' && (
           <>
-            <h2 style={{ margin: '0 0 1rem 0' }}>Add a Location</h2>
+            <h2 style={{ margin: '0 0 1rem 0' }}>{t('admin.addLocationTitle')}</h2>
             {saveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{saveError}</div>}
             {saveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{saveSuccess}</div>}
             {sharedForm(true)}
@@ -1406,7 +1487,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
         {mode === 'edit' && selectedLocation != null && (
           <>
-            <h2 style={{ margin: '0 0 1rem 0' }}>Edit: {selectedLocation.name}</h2>
+            <h2 style={{ margin: '0 0 1rem 0' }}>{t('admin.edit')}: {selectedLocation.name}</h2>
             {saveError && <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>{saveError}</div>}
             {saveSuccess && <div style={{ padding: '0.75rem', border: '1px solid #4caf50', borderRadius: 8, marginBottom: '0.75rem', color: '#4caf50' }}>{saveSuccess}</div>}
             {sharedForm(false)}

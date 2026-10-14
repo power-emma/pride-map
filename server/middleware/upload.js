@@ -8,7 +8,9 @@ const upload = multer({
   limits: { fileSize: MAX_IMAGE_BYTES },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      return cb(new Error('Unsupported image type. Use JPEG, PNG, WEBP, or GIF.'));
+      const error = new Error('Unsupported image type.');
+      error.code = 'UNSUPPORTED_IMAGE_TYPE';
+      return cb(error);
     }
     cb(null, true);
   },
@@ -22,10 +24,15 @@ const upload = multer({
 function handleImageUpload(req, res, next) {
   upload.single('image')(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ error: err.message || 'Invalid image upload' });
+      const code = err.code === 'LIMIT_FILE_SIZE'
+        ? 'IMAGE_TOO_LARGE'
+        : err.code === 'UNSUPPORTED_IMAGE_TYPE'
+          ? 'UNSUPPORTED_IMAGE_TYPE'
+          : 'INVALID_IMAGE_UPLOAD';
+      return res.status(400).json({ code });
     }
     if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided (expected field "image")' });
+      return res.status(400).json({ code: 'IMAGE_FILE_REQUIRED' });
     }
     next();
   });

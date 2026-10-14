@@ -10,7 +10,7 @@ router.post('/login', async (req, res) => {
   const { username, password } = req.body ?? {};
 
   if (!username || !password) {
-    return res.status(400).json({ error: 'username and password are required' });
+    return res.status(400).json({ code: 'CREDENTIALS_REQUIRED' });
   }
 
   try {
@@ -21,21 +21,21 @@ router.post('/login', async (req, res) => {
 
     if (result.rowCount === 0) {
       // Deliberate vague message to avoid username enumeration
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ code: 'INVALID_CREDENTIALS' });
     }
 
     const { password_hash } = result.rows[0];
     const match = await bcrypt.compare(password, password_hash);
 
     if (!match) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ code: 'INVALID_CREDENTIALS' });
     }
 
     const token = jwt.sign({ username }, jwtSecret, { expiresIn: '8h' });
     return res.json({ token });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

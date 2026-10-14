@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { CircleMarker, Popup, useMap } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
+import { useTranslation } from "react-i18next";
+import "./i18n";
 
 const UserMarkerComponent = () => {
 	const map = useMap();
+	const { t } = useTranslation();
 	const [userPosition, setUserPosition] = useState<LatLngExpression | null>(null);
 
 	useEffect(() => {
@@ -26,7 +29,7 @@ const UserMarkerComponent = () => {
 				weight: 2,
 			}}
 		>
-			<Popup>You are here!</Popup>
+			<Popup>{t('map.youAreHere')}</Popup>
 		</CircleMarker>
 	);
 }

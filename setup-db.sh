@@ -91,25 +91,25 @@ echo "Setting up database and user..."
 # Function to run psql commands
 run_psql() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        sudo -u postgres psql "$@"
+        sudo -u postgres psql -v ON_ERROR_STOP=1 "$@"
     else
-        psql postgres "$@"
+        psql -v ON_ERROR_STOP=1 postgres "$@"
     fi
 }
 
 # NOTE: This script is NON-DESTRUCTIVE and idempotent. It only ever creates
 # things that are missing — it never drops the database, the role, or any data.
 # Running it against an existing, populated database is safe: it will leave the
-# existing schema and rows untouched and simply ensure the newer `submissions`
-# table exists.
+# existing schema and rows untouched while applying idempotent schema/content
+# migrations for submissions, bilingual listings, and events.
 
 # Helper to run a query as the app user against the app DB (so object ownership
 # matches what the server connects as).
 run_psql_db() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        sudo -u postgres psql -d "$DB_NAME" "$@"
+        sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$DB_NAME" "$@"
     else
-        psql -d "$DB_NAME" "$@"
+        psql -v ON_ERROR_STOP=1 -d "$DB_NAME" "$@"
     fi
 }
 
@@ -204,22 +204,58 @@ fi
 MIGRATION_SQL="$SCRIPT_DIR/server/add-submissions-table.sql"
 if [ -f "$MIGRATION_SQL" ]; then
     echo "Ensuring 'submissions' table exists..."
-    run_psql_db -f "$MIGRATION_SQL" 2>&1 | grep -v "^$" || true
+    if ! run_psql_db -f "$MIGRATION_SQL"; then
+        echo "ERROR: submissions migration failed." >&2
+        exit 1
+    fi
 else
     echo "WARNING: $MIGRATION_SQL not found — 'submissions' table not ensured."
 fi
+
+for migration in \
+    add-french-location-content.sql \
+    add-events-table.sql \
+    add-french-event-content.sql \
+    add-image-columns.sql \
+    add-image-blob-columns.sql; do
+    MIGRATION_SQL="$SCRIPT_DIR/server/$migration"
+    if [ -f "$MIGRATION_SQL" ]; then
+        echo "Applying database migration '$migration'..."
+        if ! run_psql_db -f "$MIGRATION_SQL"; then
+            echo "ERROR: database migration '$migration' failed." >&2
+            exit 1
+        fi
+    else
+        echo "WARNING: $MIGRATION_SQL not found — migration skipped." >&2
+    fi
+done
 
 # Verify the setup — confirm every core table actually exists, and fail loudly
 # (rather than reporting success) if any of them is missing.
 echo "Verifying database setup..."
 
 verification_failed=false
-for tbl in categories locations location_categories admin_users submissions; do
+for tbl in categories locations location_categories admin_users submissions events; do
     exists=$(run_psql_db -tAc "SELECT to_regclass('public.$tbl') IS NOT NULL;" 2>/dev/null | xargs)
     if [ "$exists" = "t" ]; then
         echo "  ✓ table '$tbl' present"
     else
         echo "  ✗ table '$tbl' MISSING" >&2
+        verification_failed=true
+    fi
+done
+
+for column in \
+    locations.name_fr locations.description_fr locations.image_url locations.image_data locations.image_mime_type \
+    submissions.name_fr submissions.description_fr submissions.image_url submissions.image_data submissions.image_mime_type \
+    events.title_fr events.description_fr events.location_id events.image_url events.image_data events.image_mime_type; do
+    tbl=${column%%.*}
+    col=${column#*.}
+    exists=$(run_psql_db -tAc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$tbl' AND column_name = '$col');" 2>/dev/null | xargs)
+    if [ "$exists" = "t" ]; then
+        echo "  ✓ column '$column' present"
+    else
+        echo "  ✗ column '$column' MISSING" >&2
         verification_failed=true
     fi
 done
@@ -250,4 +286,3 @@ echo "  User: $DB_USER"
 echo "  Password: $DB_PASSWORD"
 echo ""
 echo "PostgreSQL is now running and ready to accept connections!"
-
