@@ -58,7 +58,7 @@ router.get('/', async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching events:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -81,7 +81,7 @@ router.get('/all', requireAuth, async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching all events:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -89,16 +89,16 @@ function validateEventBody(body) {
   const title = emptyToNull(body?.title);
   const titleFr = emptyToNull(body?.title_fr);
   const displayTitle = title || titleFr;
-  if (!displayTitle) return { error: 'title is required' };
+  if (!displayTitle) return { code: 'TITLE_REQUIRED' };
 
   const eventDate = emptyToNull(body?.event_date);
   if (!eventDate || Number.isNaN(Date.parse(eventDate))) {
-    return { error: 'event_date is required and must be a valid date' };
+    return { code: 'INVALID_EVENT_DATE' };
   }
 
   const locationId = parseNullableId(body?.location_id);
   if (Number.isNaN(locationId)) {
-    return { error: 'location_id must be a positive integer when provided' };
+    return { code: 'INVALID_LINKED_LOCATION' };
   }
 
   const eventTime = emptyToNull(body?.event_time);
@@ -115,8 +115,8 @@ function validateEventBody(body) {
 // POST /events — admin only.
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { error, value } = validateEventBody(req.body);
-    if (error) return res.status(400).json({ error });
+    const { code, value } = validateEventBody(req.body);
+    if (code) return res.status(400).json({ code });
 
     const result = await pool.query(
       `INSERT INTO events (title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url)
@@ -128,10 +128,10 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) {
-      return res.status(400).json({ error: 'Linked location does not exist' });
+      return res.status(400).json({ code: 'LINKED_LOCATION_NOT_FOUND' });
     }
     console.error('Error creating event:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -140,11 +140,11 @@ router.put('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
-    const { error, value } = validateEventBody(req.body);
-    if (error) return res.status(400).json({ error });
+    const { code, value } = validateEventBody(req.body);
+    if (code) return res.status(400).json({ code });
 
     const result = await pool.query(
       `UPDATE events
@@ -157,16 +157,16 @@ router.put('/:id', requireAuth, async (req, res) => {
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Event not found' });
+      return res.status(404).json({ code: 'EVENT_NOT_FOUND' });
     }
 
     return res.json(result.rows[0]);
   } catch (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) {
-      return res.status(400).json({ error: 'Linked location does not exist' });
+      return res.status(400).json({ code: 'LINKED_LOCATION_NOT_FOUND' });
     }
     console.error('Error updating event:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -175,18 +175,18 @@ router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
     const result = await pool.query('DELETE FROM events WHERE id = $1 RETURNING id', [id]);
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Event not found' });
+      return res.status(404).json({ code: 'EVENT_NOT_FOUND' });
     }
 
     return res.json({ deleted: id });
   } catch (error) {
     console.error('Error deleting event:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -197,7 +197,7 @@ router.get('/:id/image', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
     const result = await pool.query(
@@ -206,7 +206,7 @@ router.get('/:id/image', async (req, res) => {
     );
     const row = result.rows[0];
     if (!row || !row.image_data) {
-      return res.status(404).json({ error: 'No image uploaded for this event' });
+      return res.status(404).json({ code: 'NO_EVENT_IMAGE' });
     }
 
     res.set('Content-Type', row.image_mime_type || 'application/octet-stream');
@@ -214,7 +214,7 @@ router.get('/:id/image', async (req, res) => {
     return res.send(row.image_data);
   } catch (error) {
     console.error('Error serving event image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -223,7 +223,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
     const result = await pool.query(
@@ -231,13 +231,13 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
       [req.file.buffer, req.file.mimetype, id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Event not found' });
+      return res.status(404).json({ code: 'EVENT_NOT_FOUND' });
     }
 
     return res.json({ id, has_image: true });
   } catch (error) {
     console.error('Error uploading event image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -246,7 +246,7 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid event id' });
+      return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
     const result = await pool.query(
@@ -254,13 +254,13 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
       [id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Event not found' });
+      return res.status(404).json({ code: 'EVENT_NOT_FOUND' });
     }
 
     return res.json({ id, has_image: false });
   } catch (error) {
     console.error('Error deleting event image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

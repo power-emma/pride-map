@@ -44,6 +44,7 @@ import ImageUploadControl from '../components/ImageUploadControl';
 import App from '../App';
 import CreateLocationPage from '../CreateLocationPage';
 import i18n from '../i18n';
+import { localizedApiError } from '../localizedApiError';
 
 // ─── CreateLocationPage geocoding ───────────────────────────────────────────
 describe('CreateLocationPage', () => {
@@ -153,6 +154,18 @@ describe('ImageUploadControl', () => {
         await act(async () => { await i18n.changeLanguage('fr'); });
         render(<ImageUploadControl authToken="token" uploadUrl={null} hasImage={false} onChange={() => {}} />);
         expect(screen.getByText('Enregistrez d’abord, puis vous pourrez téléverser une photo ici.')).toBeInTheDocument();
+        await act(async () => { await i18n.changeLanguage('en'); });
+    });
+});
+
+describe('localizedApiError', () => {
+    it('translates known API errors and preserves HTTP status in the selected language', async () => {
+        const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+        await act(async () => { await i18n.changeLanguage('fr'); });
+        expect(localizedApiError('LOCATION_NOT_FOUND', 404)).toBe('Lieu introuvable.');
+        expect(localizedApiError('UNRECOGNIZED_SERVER_ERROR', 503)).toContain('HTTP 503');
+        expect(errorLog).toHaveBeenCalledWith('Unrecognized API error code:', 'UNRECOGNIZED_SERVER_ERROR');
+        errorLog.mockRestore();
         await act(async () => { await i18n.changeLanguage('en'); });
     });
 });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './i18n';
+import { localizedApiError } from './localizedApiError';
 
 const inputStyle: React.CSSProperties = {
   padding: '0.6rem 0.75rem',
@@ -37,12 +38,13 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error ?? `${t('login.failed')} (${res.status})`);
+        setError(localizedApiError(json?.code, res.status));
         return;
       }
       onLogin(json.token as string);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('login.failed'));
+      console.error('Login request failed:', err);
+      setError(t('errors.network'));
     } finally {
       setLoading(false);
     }

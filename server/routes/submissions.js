@@ -96,7 +96,7 @@ router.post('/', async (req, res) => {
       const retryAfterSec = Math.ceil((RATE_LIMIT_MS - (now - last)) / 1000);
       res.set('Retry-After', String(retryAfterSec));
       return res.status(429).json({
-        error: 'You can only submit one business every 10 minutes. Please try again later.',
+        code: 'SUBMISSION_RATE_LIMIT',
         retryAfterSeconds: retryAfterSec,
       });
     }
@@ -105,7 +105,7 @@ router.post('/', async (req, res) => {
     const captchaToken = req.body?.captchaToken;
     const captchaOk = await verifyTurnstile(captchaToken, ip);
     if (!captchaOk) {
-      return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
+      return res.status(400).json({ code: 'CAPTCHA_VERIFICATION_FAILED' });
     }
 
     // 3) Validate fields.
@@ -113,12 +113,12 @@ router.post('/', async (req, res) => {
     const nameFr = emptyToNull(req.body?.name_fr);
     const submittedName = name || nameFr;
     if (!submittedName) {
-      return res.status(400).json({ error: 'name is required' });
+      return res.status(400).json({ code: 'NAME_REQUIRED' });
     }
 
     const submitterEmail = emptyToNull(req.body?.submitter_email);
     if (!submitterEmail || !isValidEmail(submitterEmail)) {
-      return res.status(400).json({ error: 'A valid email address is required' });
+      return res.status(400).json({ code: 'A_VALID_EMAIL_REQUIRED' });
     }
 
     const description = emptyToNull(req.body?.description);
@@ -130,18 +130,18 @@ router.post('/', async (req, res) => {
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      return res.status(400).json({ error: 'latitude/longitude must be numbers when provided' });
+      return res.status(400).json({ code: 'INVALID_COORDINATES' });
     }
     if (latitude !== null && (latitude < -90 || latitude > 90)) {
-      return res.status(400).json({ error: 'latitude must be between -90 and 90' });
+      return res.status(400).json({ code: 'INVALID_LATITUDE' });
     }
     if (longitude !== null && (longitude < -180 || longitude > 180)) {
-      return res.status(400).json({ error: 'longitude must be between -180 and 180' });
+      return res.status(400).json({ code: 'INVALID_LONGITUDE' });
     }
 
     const categoryIds = parseCategoryIds(req.body?.category_ids);
     if (categoryIds === null) {
-      return res.status(400).json({ error: 'category_ids must be an array of positive integers' });
+      return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
     // 4) Persist as a pending submission.
@@ -164,7 +164,7 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating submission:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -189,7 +189,7 @@ router.get('/', requireAuth, async (req, res) => {
       );
     } else {
       if (!['pending', 'approved', 'rejected'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status filter' });
+        return res.status(400).json({ code: 'INVALID_STATUS_FILTER' });
       }
       result = await pool.query(
         `SELECT id, name, name_fr, description, description_fr, address,
@@ -206,7 +206,7 @@ router.get('/', requireAuth, async (req, res) => {
     return res.json(result.rows);
   } catch (error) {
     console.error('Error fetching submissions:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -220,19 +220,19 @@ router.put('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid submission id' });
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
     const name = emptyToNull(req.body?.name);
     const nameFr = emptyToNull(req.body?.name_fr);
     const submittedName = name || nameFr;
     if (!submittedName) {
-      return res.status(400).json({ error: 'name is required' });
+      return res.status(400).json({ code: 'NAME_REQUIRED' });
     }
 
     const submitterEmail = emptyToNull(req.body?.submitter_email);
     if (!submitterEmail || !isValidEmail(submitterEmail)) {
-      return res.status(400).json({ error: 'A valid email address is required' });
+      return res.status(400).json({ code: 'A_VALID_EMAIL_REQUIRED' });
     }
 
     const description = emptyToNull(req.body?.description);
@@ -244,18 +244,18 @@ router.put('/:id', requireAuth, async (req, res) => {
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      return res.status(400).json({ error: 'latitude/longitude must be numbers when provided' });
+      return res.status(400).json({ code: 'INVALID_COORDINATES' });
     }
     if (latitude !== null && (latitude < -90 || latitude > 90)) {
-      return res.status(400).json({ error: 'latitude must be between -90 and 90' });
+      return res.status(400).json({ code: 'INVALID_LATITUDE' });
     }
     if (longitude !== null && (longitude < -180 || longitude > 180)) {
-      return res.status(400).json({ error: 'longitude must be between -180 and 180' });
+      return res.status(400).json({ code: 'INVALID_LONGITUDE' });
     }
 
     const categoryIds = parseCategoryIds(req.body?.category_ids);
     if (categoryIds === null) {
-      return res.status(400).json({ error: 'category_ids must be an array of positive integers' });
+      return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
     const result = await pool.query(
@@ -271,13 +271,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Pending submission not found' });
+      return res.status(404).json({ code: 'PENDING_SUBMISSION_NOT_FOUND' });
     }
 
     return res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating submission:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -292,7 +292,7 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid submission id' });
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
     await client.query('BEGIN');
@@ -306,11 +306,11 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
 
     if (sub.rowCount === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Submission not found' });
+      return res.status(404).json({ code: 'SUBMISSION_NOT_FOUND' });
     }
     if (sub.rows[0].status !== 'pending') {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: `Submission already ${sub.rows[0].status}` });
+      return res.status(409).json({ code: 'INVALID_SUBMISSION_STATUS' });
     }
 
     const s = sub.rows[0];
@@ -341,7 +341,7 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Error approving submission:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   } finally {
     client.release();
   }
@@ -355,7 +355,7 @@ router.post('/:id/reject', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid submission id' });
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
     const result = await pool.query(
@@ -365,13 +365,13 @@ router.post('/:id/reject', requireAuth, async (req, res) => {
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Pending submission not found' });
+      return res.status(404).json({ code: 'PENDING_SUBMISSION_NOT_FOUND' });
     }
 
     return res.json({ id, status: 'rejected' });
   } catch (error) {
     console.error('Error rejecting submission:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -382,7 +382,7 @@ router.get('/:id/image', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid submission id' });
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
     const result = await pool.query(
@@ -391,7 +391,7 @@ router.get('/:id/image', async (req, res) => {
     );
     const row = result.rows[0];
     if (!row || !row.image_data) {
-      return res.status(404).json({ error: 'No image uploaded for this submission' });
+      return res.status(404).json({ code: 'NO_SUBMISSION_IMAGE' });
     }
 
     res.set('Content-Type', row.image_mime_type || 'application/octet-stream');
@@ -399,7 +399,7 @@ router.get('/:id/image', async (req, res) => {
     return res.send(row.image_data);
   } catch (error) {
     console.error('Error serving submission image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -409,7 +409,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid submission id' });
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
     const result = await pool.query(
@@ -417,13 +417,13 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
       [req.file.buffer, req.file.mimetype, id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Submission not found' });
+      return res.status(404).json({ code: 'SUBMISSION_NOT_FOUND' });
     }
 
     return res.json({ id, has_image: true });
   } catch (error) {
     console.error('Error uploading submission image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -432,7 +432,7 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid submission id' });
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
     const result = await pool.query(
@@ -440,13 +440,13 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
       [id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Submission not found' });
+      return res.status(404).json({ code: 'SUBMISSION_NOT_FOUND' });
     }
 
     return res.json({ id, has_image: false });
   } catch (error) {
     console.error('Error deleting submission image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

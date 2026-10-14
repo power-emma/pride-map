@@ -10,7 +10,7 @@ function requireAuth(req, res, next) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
+    return res.status(401).json({ code: 'UNAUTHENTICATED' });
   }
 
   try {
@@ -18,7 +18,7 @@ function requireAuth(req, res, next) {
     req.user = payload;
     return next();
   } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ code: 'INVALID_OR_EXPIRED_TOKEN' });
   }
 }
 

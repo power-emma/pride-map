@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { localizedApiError } from '../localizedApiError';
 
 interface ImageUploadControlProps {
   authToken: string;
@@ -50,14 +51,15 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error ?? `Failed to upload (${res.status})`);
+        setError(localizedApiError(json?.code, res.status));
         return;
       }
       setFile(null);
       setCacheBust(n => n + 1);
       onChange(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('imageUpload.failedUpload'));
+      console.error('Failed to upload image:', err);
+      setError(t('errors.network'));
     } finally {
       setUploading(false);
     }
@@ -74,12 +76,13 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error ?? `Failed to remove (${res.status})`);
+        setError(localizedApiError(json?.code, res.status));
         return;
       }
       onChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('imageUpload.failedRemove'));
+      console.error('Failed to remove image:', err);
+      setError(t('errors.network'));
     } finally {
       setDeleting(false);
     }

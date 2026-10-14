@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import './i18n';
+import i18nInstance from './i18n';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
 import ImageUploadControl from './components/ImageUploadControl';
 import { CITY_NAME } from './config';
+import { localizedApiError } from './localizedApiError';
 
 type Category = { id: number; name: string };
 
@@ -176,7 +177,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         setLocations(locs);
         setCategories(cats);
       })
-      .catch(err => setLoadError(err.message ?? 'Failed to load data'))
+      .catch(err => {
+        console.error('Failed to load admin location data:', err);
+        setLoadError(i18nInstance.t('errors.network'));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -189,14 +193,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     })
       .then(async (res) => {
         if (res.status === 401) { onAuthError(); return []; }
-        if (!res.ok) throw new Error(`Failed to load submissions (${res.status})`);
+        if (!res.ok) throw new Error(String(res.status));
         return res.json();
       })
       .then((rows: Submission[]) => {
         if (!cancelled) setSubmissions(rows ?? []);
       })
       .catch((err) => {
-        if (!cancelled) setSubmissionsError(err instanceof Error ? err.message : 'Failed to load submissions');
+        if (!cancelled) {
+          console.error('Failed to load submissions:', err);
+          setSubmissionsError(i18nInstance.t('errors.network'));
+        }
       });
     return () => { cancelled = true; };
   }, [authToken, onAuthError]);
@@ -210,14 +217,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     })
       .then(async (res) => {
         if (res.status === 401) { onAuthError(); return []; }
-        if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
+        if (!res.ok) throw new Error(String(res.status));
         return res.json();
       })
       .then((rows: EventItem[]) => {
         if (!cancelled) setEvents(rows ?? []);
       })
       .catch((err) => {
-        if (!cancelled) setEventsError(err instanceof Error ? err.message : 'Failed to load events');
+        if (!cancelled) {
+          console.error('Failed to load events:', err);
+          setEventsError(i18nInstance.t('errors.network'));
+        }
       });
     return () => { cancelled = true; };
   }, [authToken, onAuthError]);
@@ -244,7 +254,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSubmissionsError(json?.error ?? `Failed to approve (${res.status})`);
+        setSubmissionsError(localizedApiError(json?.code, res.status));
         return;
       }
       // Reflect the new live location without a refetch.
@@ -265,7 +275,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
       setSubmissions(prev => prev.filter(s => s.id !== sub.id));
     } catch (err) {
-      setSubmissionsError(err instanceof Error ? err.message : 'Failed to approve');
+      console.error('Failed to approve submission:', err);
+      setSubmissionsError(t('errors.network'));
     } finally {
       setBusySubmissionId(null);
     }
@@ -282,12 +293,13 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSubmissionsError(json?.error ?? `Failed to reject (${res.status})`);
+        setSubmissionsError(localizedApiError(json?.code, res.status));
         return;
       }
       setSubmissions(prev => prev.filter(s => s.id !== sub.id));
     } catch (err) {
-      setSubmissionsError(err instanceof Error ? err.message : 'Failed to reject');
+      console.error('Failed to reject submission:', err);
+      setSubmissionsError(t('errors.network'));
     } finally {
       setBusySubmissionId(null);
     }
@@ -321,7 +333,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const lat = toNullableNumber(editDraft.latitude);
     const lng = toNullableNumber(editDraft.longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setSubmissionsError('Latitude/Longitude must be valid numbers (or left blank).');
+      setSubmissionsError(t('errors.invalidCoordinates'));
       return;
     }
 
@@ -352,14 +364,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSubmissionsError(json?.error ?? `Failed to save (${res.status})`);
+        setSubmissionsError(localizedApiError(json?.code, res.status));
         return;
       }
       // Merge the saved values back into the list.
       setSubmissions(prev => prev.map(s => (s.id === sub.id ? { ...s, ...json } : s)));
       setEditingSubmissionId(null);
     } catch (err) {
-      setSubmissionsError(err instanceof Error ? err.message : 'Failed to save');
+      console.error('Failed to save submission:', err);
+      setSubmissionsError(t('errors.network'));
     } finally {
       setSavingSubmission(false);
     }
@@ -388,7 +401,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const query = address.trim();
     if (!query) {
       setGeocodeResults([]);
-      setGeocodeError('Enter a street address before geocoding.');
+      setGeocodeError(t('admin.geocodeAddress'));
       return;
     }
 
@@ -401,7 +414,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       );
 
       if (!response.ok) {
-        throw new Error(`Geocoding failed (${response.status})`);
+        throw new Error(String(response.status));
       }
 
       const data = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
@@ -416,14 +429,15 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
       if (results.length === 0) {
         setGeocodeResults([]);
-        setGeocodeError('No matching addresses found. Try a more specific street address.');
+        setGeocodeError(t('admin.noAddresses'));
         return;
       }
 
       setGeocodeResults(results);
     } catch (err) {
       setGeocodeResults([]);
-      setGeocodeError(err instanceof Error ? err.message : 'Could not geocode this address.');
+      console.error('Could not geocode address:', err);
+      setGeocodeError(t('admin.geocodeFailed'));
     } finally {
       setGeocoding(false);
     }
@@ -469,7 +483,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const lat = toNullableNumber(latitude);
     const lng = toNullableNumber(longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setSaveError('Latitude/Longitude must be valid numbers (or left blank).');
+      setSaveError(t('errors.invalidCoordinates'));
       return;
     }
 
@@ -499,7 +513,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSaveError(json?.error ?? `Failed to save (${res.status})`);
+        setSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
@@ -510,9 +524,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
             : l
         )
       );
-      setSaveSuccess('Saved successfully.');
+      setSaveSuccess(t('admin.savedSuccessfully'));
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save');
+      console.error('Failed to save location:', err);
+      setSaveError(t('errors.network'));
     } finally {
       setSaving(false);
     }
@@ -526,7 +541,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const lat = toNullableNumber(latitude);
     const lng = toNullableNumber(longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setSaveError('Latitude/Longitude must be valid numbers (or left blank).');
+      setSaveError(t('errors.invalidCoordinates'));
       return;
     }
 
@@ -556,18 +571,19 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSaveError(json?.error ?? `Failed to create (${res.status})`);
+        setSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
       const newLoc: Location = { id: json.id, ...payload, has_image: false, category_ids: payload.category_ids };
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
-      setSaveSuccess('Location created.');
+      setSaveSuccess(t('admin.locationCreated'));
       // Switch to editing the new location
       setSelectedId(json.id);
       setMode('edit');
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to create');
+      console.error('Failed to create location:', err);
+      setSaveError(t('errors.network'));
     } finally {
       setSaving(false);
     }
@@ -589,7 +605,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setSaveError(json?.error ?? `Failed to delete (${res.status})`);
+        setSaveError(localizedApiError(json?.code, res.status));
         setDeleting(false);
         return;
       }
@@ -598,7 +614,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       setMode('idle');
       setConfirmDelete(false);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to delete');
+      console.error('Failed to delete location:', err);
+      setSaveError(t('errors.network'));
     } finally {
       setDeleting(false);
     }
@@ -680,16 +697,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setEventSaveError(json?.error ?? `Failed to create (${res.status})`);
+        setEventSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
       setEvents(prev => [...prev, { ...json, has_image: false }].sort((a, b) => a.event_date.localeCompare(b.event_date)));
-      setEventSaveSuccess('Event created.');
+      setEventSaveSuccess(t('admin.eventCreated'));
       setSelectedEventId(json.id);
       setEventMode('edit');
     } catch (err) {
-      setEventSaveError(err instanceof Error ? err.message : 'Failed to create');
+      console.error('Failed to create event:', err);
+      setEventSaveError(t('errors.network'));
     } finally {
       setEventSaving(false);
     }
@@ -714,7 +732,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setEventSaveError(json?.error ?? `Failed to save (${res.status})`);
+        setEventSaveError(localizedApiError(json?.code, res.status));
         return;
       }
 
@@ -729,9 +747,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         location_image_url: linkedLoc?.image_url ?? null,
         location_has_image: linkedLoc?.has_image ?? false,
       } : ev)));
-      setEventSaveSuccess('Saved successfully.');
+      setEventSaveSuccess(t('admin.savedSuccessfully'));
     } catch (err) {
-      setEventSaveError(err instanceof Error ? err.message : 'Failed to save');
+      console.error('Failed to save event:', err);
+      setEventSaveError(t('errors.network'));
     } finally {
       setEventSaving(false);
     }
@@ -753,7 +772,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       const json = await res.json().catch(() => null);
       if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
-        setEventSaveError(json?.error ?? `Failed to delete (${res.status})`);
+        setEventSaveError(localizedApiError(json?.code, res.status));
         setEventDeleting(false);
         return;
       }
@@ -762,7 +781,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
       setEventMode('idle');
       setConfirmEventDelete(false);
     } catch (err) {
-      setEventSaveError(err instanceof Error ? err.message : 'Failed to delete');
+      console.error('Failed to delete event:', err);
+      setEventSaveError(t('errors.network'));
     } finally {
       setEventDeleting(false);
     }

@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching locations:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -63,12 +63,12 @@ router.put('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid location id' });
+      return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
     const name = emptyToNull(req.body?.name);
     if (!name) {
-      return res.status(400).json({ error: 'name is required' });
+      return res.status(400).json({ code: 'NAME_REQUIRED' });
     }
 
     const description = emptyToNull(req.body?.description);
@@ -82,18 +82,18 @@ router.put('/:id', requireAuth, async (req, res) => {
     const longitude = parseNullableFloat(req.body?.longitude);
 
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      return res.status(400).json({ error: 'latitude/longitude must be numbers when provided' });
+      return res.status(400).json({ code: 'INVALID_COORDINATES' });
     }
     if (latitude !== null && (latitude < -90 || latitude > 90)) {
-      return res.status(400).json({ error: 'latitude must be between -90 and 90' });
+      return res.status(400).json({ code: 'INVALID_LATITUDE' });
     }
     if (longitude !== null && (longitude < -180 || longitude > 180)) {
-      return res.status(400).json({ error: 'longitude must be between -180 and 180' });
+      return res.status(400).json({ code: 'INVALID_LONGITUDE' });
     }
 
     const categoryIds = parseCategoryIds(req.body?.category_ids);
     if (categoryIds === null) {
-      return res.status(400).json({ error: 'category_ids must be an array of positive integers' });
+      return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
     const result = await pool.query(
@@ -102,7 +102,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Location not found' });
+      return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });
     }
 
     // Replace all categories
@@ -117,7 +117,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     return res.json({ id, name, name_fr: nameFr, description, description_fr: descriptionFr, address, latitude, longitude, url, image_url: imageUrl, category_ids: categoryIds });
   } catch (error) {
     console.error('Error updating location:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -126,18 +126,18 @@ router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid location id' });
+      return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
     const result = await pool.query('DELETE FROM locations WHERE id = $1 RETURNING id', [id]);
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Location not found' });
+      return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });
     }
 
     return res.json({ deleted: id });
   } catch (error) {
     console.error('Error deleting location:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -145,7 +145,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const name = emptyToNull(req.body?.name);
     if (!name) {
-      return res.status(400).json({ error: 'name is required' });
+      return res.status(400).json({ code: 'NAME_REQUIRED' });
     }
 
     const description = emptyToNull(req.body?.description);
@@ -159,18 +159,18 @@ router.post('/', requireAuth, async (req, res) => {
     const longitude = parseNullableFloat(req.body?.longitude);
 
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      return res.status(400).json({ error: 'latitude/longitude must be numbers when provided' });
+      return res.status(400).json({ code: 'INVALID_COORDINATES' });
     }
     if (latitude !== null && (latitude < -90 || latitude > 90)) {
-      return res.status(400).json({ error: 'latitude must be between -90 and 90' });
+      return res.status(400).json({ code: 'INVALID_LATITUDE' });
     }
     if (longitude !== null && (longitude < -180 || longitude > 180)) {
-      return res.status(400).json({ error: 'longitude must be between -180 and 180' });
+      return res.status(400).json({ code: 'INVALID_LONGITUDE' });
     }
 
     const categoryIds = parseCategoryIds(req.body?.category_ids);
     if (categoryIds === null) {
-      return res.status(400).json({ error: 'category_ids must be an array of positive integers' });
+      return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
     const result = await pool.query(
@@ -202,7 +202,7 @@ router.post('/', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating location:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -211,7 +211,7 @@ router.get('/:id/image', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid location id' });
+      return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
     const result = await pool.query(
@@ -220,7 +220,7 @@ router.get('/:id/image', async (req, res) => {
     );
     const row = result.rows[0];
     if (!row || !row.image_data) {
-      return res.status(404).json({ error: 'No image uploaded for this location' });
+      return res.status(404).json({ code: 'NO_LOCATION_IMAGE' });
     }
 
     res.set('Content-Type', row.image_mime_type || 'application/octet-stream');
@@ -228,7 +228,7 @@ router.get('/:id/image', async (req, res) => {
     return res.send(row.image_data);
   } catch (error) {
     console.error('Error serving location image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -237,7 +237,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid location id' });
+      return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
     const result = await pool.query(
@@ -245,13 +245,13 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
       [req.file.buffer, req.file.mimetype, id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Location not found' });
+      return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });
     }
 
     return res.json({ id, has_image: true });
   } catch (error) {
     console.error('Error uploading location image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 
@@ -260,7 +260,7 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ error: 'Invalid location id' });
+      return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
     const result = await pool.query(
@@ -268,13 +268,13 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
       [id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Location not found' });
+      return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });
     }
 
     return res.json({ id, has_image: false });
   } catch (error) {
     console.error('Error deleting location image:', error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
 

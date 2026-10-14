@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
 import TurnstileWidget from './components/TurnstileWidget';
-import './i18n';
+import i18nInstance from './i18n';
+import { localizedApiError } from './localizedApiError';
 
 type Category = { id: number; name: string };
 
@@ -60,7 +61,7 @@ export default function CreateLocationPage() {
 
     fetch('/api/categories')
       .then(async (res) => {
-        if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);
+        if (!res.ok) throw new Error(String(res.status));
         return res.json();
       })
       .then((json: Category[]) => {
@@ -69,7 +70,8 @@ export default function CreateLocationPage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setCategoriesError(err instanceof Error ? err.message : 'Failed to load categories');
+        console.error('Failed to load categories:', err);
+        setCategoriesError(i18nInstance.t('errors.network'));
       })
       .finally(() => {
         if (cancelled) return;
@@ -107,7 +109,7 @@ export default function CreateLocationPage() {
       );
 
       if (!response.ok) {
-        throw new Error(`Geocoding failed (${response.status})`);
+        throw new Error(String(response.status));
       }
 
       const data = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
@@ -129,7 +131,8 @@ export default function CreateLocationPage() {
       setGeocodeResults(results);
     } catch (err) {
       setGeocodeResults([]);
-      setGeocodeError(err instanceof Error ? err.message : t('create.geocodeFailed'));
+      console.error('Could not geocode address:', err);
+      setGeocodeError(t('create.geocodeFailed'));
     } finally {
       setGeocoding(false);
     }
@@ -189,10 +192,10 @@ export default function CreateLocationPage() {
 
       const json: unknown = await res.json().catch(() => null);
       if (!res.ok) {
-        const message = json !== null && typeof json === 'object' && 'error' in json && typeof json.error === 'string'
-          ? json.error
-          : `Failed to submit business (${res.status})`;
-        setSubmitError(message);
+        const errorCode = json !== null && typeof json === 'object' && 'code' in json
+          ? json.code
+          : null;
+        setSubmitError(localizedApiError(errorCode, res.status));
         // Token is single-use; force the user to solve a fresh challenge.
         setCaptchaToken('');
         setCaptchaResetSignal((n) => n + 1);
@@ -219,7 +222,8 @@ export default function CreateLocationPage() {
       // Small UX: return home after a brief beat
       setTimeout(() => navigate('/'), 400);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : t('create.submitFailed'));
+      console.error('Failed to submit business:', err);
+      setSubmitError(t('errors.network'));
       setCaptchaToken('');
       setCaptchaResetSignal((n) => n + 1);
     } finally {

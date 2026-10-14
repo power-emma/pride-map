@@ -61,7 +61,7 @@ router.get('/all', async (req, res) => {
         res.json(pins);
     } catch (error) {
         console.error('Error in GET /pins/all:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
     }
 });
 

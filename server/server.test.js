@@ -205,7 +205,7 @@ describe('POST /locations', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ description: 'No name here' });
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+            expect(res.body).toHaveProperty('code', 'NAME_REQUIRED');
     });
 
     it('should return 400 when latitude is not a number', async () => {
@@ -214,7 +214,7 @@ describe('POST /locations', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ name: 'Bad Coords', latitude: 'not-a-number', category_ids: [] });
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'INVALID_COORDINATES');
     });
 });
 
@@ -239,6 +239,7 @@ describe('PUT /locations/:id', () => {
             .put('/locations/1')
             .send({ name: 'Updated Name', category_ids: [] });
         expect(res.statusCode).toBe(401);
+        expect(res.body).toHaveProperty('code', 'UNAUTHENTICATED');
     });
 
     it('should return 404 when the location does not exist', async () => {
@@ -248,7 +249,7 @@ describe('PUT /locations/:id', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ name: 'Ghost', category_ids: [] });
         expect(res.statusCode).toBe(404);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'LOCATION_NOT_FOUND');
     });
 
     it('should return 400 for an invalid id', async () => {
@@ -257,7 +258,7 @@ describe('PUT /locations/:id', () => {
             .set('Authorization', `Bearer ${makeToken()}`)
             .send({ name: 'Bad ID', category_ids: [] });
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'INVALID_LOCATION_ID');
     });
 });
 
@@ -282,7 +283,7 @@ describe('DELETE /locations/:id', () => {
             .delete('/locations/9999')
             .set('Authorization', `Bearer ${makeToken()}`);
         expect(res.statusCode).toBe(404);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'LOCATION_NOT_FOUND');
     });
 
     it('should return 400 for an invalid id', async () => {
@@ -290,7 +291,7 @@ describe('DELETE /locations/:id', () => {
             .delete('/locations/abc')
             .set('Authorization', `Bearer ${makeToken()}`);
         expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error');
+        expect(res.body).toHaveProperty('code', 'INVALID_LOCATION_ID');
     });
 });
 
@@ -303,6 +304,16 @@ describe('Events', () => {
         event_date: '2030-06-20',
         city: 'Ottawa',
     };
+
+    it('returns a stable code when required event title is missing', async () => {
+        const res = await request(app)
+            .post('/events')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send({ ...eventBody, title_fr: '' });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({ code: 'TITLE_REQUIRED' });
+    });
 
     it('returns French event content from the public endpoint', async () => {
         pool.query.mockResolvedValueOnce({
@@ -415,7 +426,7 @@ describe('Submissions', () => {
             mockTurnstile(false);
             const res = await request(app).post('/submissions').send(validBody);
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error');
+            expect(res.body).toHaveProperty('code', 'CAPTCHA_VERIFICATION_FAILED');
         });
 
         it('should return 400 when the email is invalid', async () => {
@@ -424,7 +435,7 @@ describe('Submissions', () => {
                 .post('/submissions')
                 .send({ ...validBody, submitter_email: 'not-an-email' });
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error');
+            expect(res.body).toHaveProperty('code', 'A_VALID_EMAIL_REQUIRED');
         });
 
         it('should return 400 when the name is missing', async () => {
