@@ -25,7 +25,9 @@ router.get('/', async (req, res) => {
       SELECT
         l.id,
         l.name,
+        l.name_fr,
         l.description,
+        l.description_fr,
         l.address,
         l.latitude::float8 AS latitude,
         l.longitude::float8 AS longitude,
@@ -38,7 +40,7 @@ router.get('/', async (req, res) => {
         ) AS category_ids
       FROM locations l
       LEFT JOIN location_categories lc ON lc.id_location = l.id
-      GROUP BY l.id, l.name, l.description, l.address, l.latitude, l.longitude, l.url, l.image_url
+      GROUP BY l.id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
       ORDER BY l.name
     `);
     res.json(result.rows);
@@ -70,6 +72,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const description = emptyToNull(req.body?.description);
+    const nameFr = emptyToNull(req.body?.name_fr);
+    const descriptionFr = emptyToNull(req.body?.description_fr);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
@@ -93,8 +97,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE locations SET name=$1, description=$2, address=$3, latitude=$4, longitude=$5, url=$6, image_url=$7 WHERE id=$8 RETURNING id',
-      [name, description, address, latitude, longitude, url, imageUrl, id]
+      'UPDATE locations SET name=$1, name_fr=$2, description=$3, description_fr=$4, address=$5, latitude=$6, longitude=$7, url=$8, image_url=$9 WHERE id=$10 RETURNING id',
+      [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id]
     );
 
     if (result.rowCount === 0) {
@@ -110,7 +114,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       );
     }
 
-    return res.json({ id, name, description, address, latitude, longitude, url, image_url: imageUrl, category_ids: categoryIds });
+    return res.json({ id, name, name_fr: nameFr, description, description_fr: descriptionFr, address, latitude, longitude, url, image_url: imageUrl, category_ids: categoryIds });
   } catch (error) {
     console.error('Error updating location:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -145,6 +149,8 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     const description = emptyToNull(req.body?.description);
+    const nameFr = emptyToNull(req.body?.name_fr);
+    const descriptionFr = emptyToNull(req.body?.description_fr);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
@@ -168,8 +174,8 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     const result = await pool.query(
-      'INSERT INTO locations (name, description, address, latitude, longitude, url, image_url) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
-      [name, description, address, latitude, longitude, url, imageUrl]
+      'INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
+      [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl]
     );
 
     const locationId = result.rows[0]?.id;
@@ -184,7 +190,9 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(201).json({
       id: locationId,
       name,
+      name_fr: nameFr,
       description,
+      description_fr: descriptionFr,
       address,
       latitude,
       longitude,
@@ -271,4 +279,3 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
-

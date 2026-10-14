@@ -294,6 +294,103 @@ describe('DELETE /locations/:id', () => {
     });
 });
 
+describe('Events', () => {
+    const eventBody = {
+        title: '',
+        title_fr: 'Fête de la fierté',
+        description: 'A community celebration.',
+        description_fr: 'Une célébration communautaire.',
+        event_date: '2030-06-20',
+        city: 'Ottawa',
+    };
+
+    it('returns French event content from the public endpoint', async () => {
+        pool.query.mockResolvedValueOnce({
+            rows: [{
+                id: 1,
+                title: 'Fête de la fierté',
+                title_fr: 'Fête de la fierté',
+                description: 'A community celebration.',
+                description_fr: 'Une célébration communautaire.',
+            }],
+            rowCount: 1,
+        });
+
+        const res = await request(app).get('/events');
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body[0]).toMatchObject({
+            title_fr: 'Fête de la fierté',
+            description_fr: 'Une célébration communautaire.',
+        });
+    });
+
+    it('creates an event with French-only title and content', async () => {
+        pool.query.mockResolvedValueOnce({
+            rows: [{ id: 12, title: 'Fête de la fierté', title_fr: 'Fête de la fierté', description_fr: eventBody.description_fr }],
+            rowCount: 1,
+        });
+
+        const res = await request(app)
+            .post('/events')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send(eventBody);
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body).toMatchObject({
+            title: 'Fête de la fierté',
+            title_fr: 'Fête de la fierté',
+            description_fr: 'Une célébration communautaire.',
+        });
+        expect(pool.query.mock.calls[0][1]).toEqual([
+            'Fête de la fierté',
+            'Fête de la fierté',
+            'A community celebration.',
+            'Une célébration communautaire.',
+            '2030-06-20',
+            null,
+            null,
+            null,
+            'Ottawa',
+            null,
+            null,
+        ]);
+    });
+
+    it('updates bilingual event content', async () => {
+        pool.query.mockResolvedValueOnce({
+            rows: [{ id: 12, title: 'Pride celebration', title_fr: 'Fête de la fierté', description_fr: eventBody.description_fr }],
+            rowCount: 1,
+        });
+
+        const res = await request(app)
+            .put('/events/12')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send({ ...eventBody, title: 'Pride celebration' });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toMatchObject({
+            title: 'Pride celebration',
+            title_fr: 'Fête de la fierté',
+            description_fr: 'Une célébration communautaire.',
+        });
+        expect(pool.query.mock.calls[0][1]).toEqual([
+            'Pride celebration',
+            'Fête de la fierté',
+            'A community celebration.',
+            'Une célébration communautaire.',
+            '2030-06-20',
+            null,
+            null,
+            null,
+            'Ottawa',
+            null,
+            null,
+            12,
+        ]);
+    });
+});
+
 describe('Submissions', () => {
     // Stub Cloudflare Turnstile's siteverify endpoint so tests never hit the network.
     function mockTurnstile(success) {
@@ -350,6 +447,38 @@ describe('Submissions', () => {
             const second = await request(app).post('/submissions').send(validBody);
             expect(second.statusCode).toBe(429);
             expect(second.headers).toHaveProperty('retry-after');
+        });
+
+        it('accepts a French-only name and stores its French content', async () => {
+            mockTurnstile(true);
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 43 }], rowCount: 1 });
+
+            const res = await request(app)
+                .post('/submissions')
+                .set('X-Forwarded-For', '192.0.2.43')
+                .send({
+                    name: '',
+                    name_fr: 'Café arc-en-ciel',
+                    description_fr: 'Un espace communautaire.',
+                    submitter_email: 'owner@example.com',
+                    captchaToken: 'dummy-token',
+                    category_ids: [],
+                });
+
+            expect(res.statusCode).toBe(201);
+            expect(pool.query.mock.calls[0][1]).toEqual([
+                'Café arc-en-ciel',
+                'Café arc-en-ciel',
+                null,
+                'Un espace communautaire.',
+                null,
+                null,
+                null,
+                null,
+                null,
+                'owner@example.com',
+                [],
+            ]);
         });
     });
 

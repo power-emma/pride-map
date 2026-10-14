@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMap } from "react-leaflet";
+import { useTranslation } from 'react-i18next';
+import './i18n';
 
 import UserMarkerComponent from './UserMarkerComponent';
 import MarkerComponent from './MarkerComponent';
 import ClusterMarker from './ClusterMarker';
 
-type Pin = { name: string, position: [number, number], categories: string[], description?: string | null, address?: string | null, url?: string | null, image_url?: string | null };
+type Pin = { name: string, name_fr?: string | null, position: [number, number], categories: string[], description?: string | null, description_fr?: string | null, address?: string | null, url?: string | null, image_url?: string | null };
 
 // Grid cell size in screen pixels. Pins in the same cell are always grouped.
 const CLUSTER_RADIUS_PX = 45;
@@ -174,13 +176,14 @@ const clusterPins = (pins: Pin[], map: ReturnType<typeof useMap>): ClusterEntry[
     return result;
 };
 
-const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, searchQuery = '', onMarkerSelect }: {
+const MarkerContainer = ({ categoryFilter, searchQuery = '', onMarkerSelect }: {
     selectedLocation?: {lat: number, lng: number, name: string},
     categoryFilter: string | null,
     searchQuery?: string,
-    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { categories?: string[], description?: string | null, address?: string | null, url?: string | null, imageUrl?: string | null }) => void,
+    onMarkerSelect?: (lat: number, lng: number, name: string, details?: { nameFr?: string | null; categories?: string[]; description?: string | null; descriptionFr?: string | null; address?: string | null; url?: string | null; imageUrl?: string | null }) => void,
 }) => {
     const map = useMap();
+    const { i18n } = useTranslation();
     const [pins, setPins] = useState<Pin[]>([]);
     // Bumped on every zoom/move so clusters recompute against the current view.
     const [, setViewVersion] = useState(0);
@@ -213,9 +216,10 @@ const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, 
     }, [map]);
 
     const query = searchQuery.trim().toLowerCase();
+    const isFrench = i18n.language.startsWith('fr');
     const visiblePins = pins.filter(pin => {
         const matchesCategory = !categoryFilter || pin.categories.includes(categoryFilter);
-        const matchesQuery = !query || pin.name.toLowerCase().includes(query);
+        const matchesQuery = !query || pin.name.toLowerCase().includes(query) || (pin.name_fr ?? '').toLowerCase().includes(query);
         return matchesCategory && matchesQuery;
     });
 
@@ -227,10 +231,13 @@ const MarkerContainer = ({ selectedLocation: _selectedLocation, categoryFilter, 
             return (
                 <MarkerComponent
                     key={`s:${pin.position[0]},${pin.position[1]}:${pin.name}`}
-                    name={pin.name}
+                    name={isFrench ? pin.name_fr || pin.name : pin.name}
+                    nameEnglish={pin.name}
+                    nameFrench={pin.name_fr}
                     position={pin.position}
                     categories={pin.categories}
                     description={pin.description}
+                    descriptionFrench={pin.description_fr}
                     address={pin.address}
                     url={pin.url}
                     imageUrl={pin.image_url}

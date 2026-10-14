@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import '../i18n';
 import { CATEGORY_COLOURS, DEFAULT_COLOUR } from '../categoryColours';
+import { useTranslation } from 'react-i18next';
+import { translateCategory } from '../categoryTranslations';
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_COLOURS).sort();
 
@@ -14,6 +17,7 @@ const SearchBar = ({
     selectedCategory: string | null;
     onCategoryChange: (category: string | null) => void;
 }) => {
+    const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -45,19 +49,19 @@ const SearchBar = ({
                 <input
                     type="text"
                     className="search-bar__input"
-                    placeholder="Search places…"
+                    placeholder={t('search.placeholder')}
                     value={query}
                     onChange={e => onQueryChange(e.target.value)}
                     onFocus={() => setOpen(true)}
                     onClick={() => setOpen(true)}
                     aria-expanded={open}
-                    aria-label="Search places"
+                    aria-label={t('search.label')}
                 />
                 {query && (
                     <button
                         type="button"
                         className="search-bar__clear"
-                        aria-label="Clear search"
+                        aria-label={t('search.clear')}
                         onClick={() => onQueryChange('')}
                     >
                         ×
@@ -66,15 +70,15 @@ const SearchBar = ({
             </div>
 
             {open && (
-                <div className="search-bar__panel" role="listbox" aria-label="Filter by category">
-                    <span className="search-bar__panel-label">Filter by category</span>
+                <div className="search-bar__panel" role="listbox" aria-label={t('search.filter')}>
+                    <span className="search-bar__panel-label">{t('search.filter')}</span>
                     <button
                         type="button"
                         className={`search-bar__category ${selectedCategory === null ? 'search-bar__category--active' : ''}`}
                         onClick={() => handleSelectCategory(null)}
                     >
                         <span className="search-bar__dot" style={{ background: DEFAULT_COLOUR.border }} />
-                        All categories
+                        {t('search.allCategories')}
                     </button>
                     {ALL_CATEGORIES.map(category => {
                         const colour = CATEGORY_COLOURS[category] ?? DEFAULT_COLOUR;
@@ -87,7 +91,7 @@ const SearchBar = ({
                                 onClick={() => handleSelectCategory(category)}
                             >
                                 <span className="search-bar__dot" style={{ background: colour.border }} />
-                                {category}
+                                {translateCategory(category, t)}
                             </button>
                         );
                     })}

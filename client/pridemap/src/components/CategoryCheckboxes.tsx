@@ -1,4 +1,7 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import '../i18n';
+import { translateCategory } from '../categoryTranslations';
 
 type Category = { id: number; name: string };
 
@@ -10,6 +13,7 @@ interface Props {
 }
 
 const CategoryCheckboxes: React.FC<Props> = ({ categories, loading, selected, onChange }) => {
+  const { t } = useTranslation();
   function toggle(id: number) {
     if (selected.includes(id)) {
       onChange(selected.filter(s => s !== id));
@@ -18,7 +22,7 @@ const CategoryCheckboxes: React.FC<Props> = ({ categories, loading, selected, on
     }
   }
 
-  if (loading) return <div style={{ opacity: 0.6, fontSize: 14 }}>Loading categories…</div>;
+  if (loading) return <div style={{ opacity: 0.6, fontSize: 14 }}>{t('create.loadingCategories')}</div>;
 
   return (
     <div style={{
@@ -38,7 +42,7 @@ const CategoryCheckboxes: React.FC<Props> = ({ categories, loading, selected, on
             checked={selected.includes(c.id)}
             onChange={() => toggle(c.id)}
           />
-          {c.name}
+          {translateCategory(c.name, t)}
         </label>
       ))}
     </div>

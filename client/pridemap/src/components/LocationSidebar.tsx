@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../i18n';
+import { translateCategory } from '../categoryTranslations';
 
 type LocationSidebarItem = {
   name: string;
+  nameFr?: string | null;
   categories?: string[];
   description?: string | null;
+  descriptionFr?: string | null;
   address?: string | null;
   url?: string | null;
   imageUrl?: string | null;
@@ -16,33 +21,30 @@ const LocationSidebar = ({
   location: LocationSidebarItem | null;
   onClose: () => void;
 }) => {
-  const [isClosing, setIsClosing] = useState(false);
-
-  useEffect(() => {
-    if (location) {
-      setIsClosing(false);
-    }
-  }, [location]);
+  const { t, i18n } = useTranslation();
+  const [closingLocation, setClosingLocation] = useState<LocationSidebarItem | null>(null);
 
   if (!location) {
     return null;
   }
 
-  const categories = location.categories?.length ? location.categories : ['Uncategorized'];
+  const categories = location.categories?.length ? location.categories : [t('sidebar.uncategorized')];
+  const isFrench = i18n.language.startsWith('fr');
+  const isClosing = closingLocation === location;
 
   const handleClose = () => {
-    setIsClosing(true);
+    setClosingLocation(location);
     window.setTimeout(() => {
       onClose();
     }, 180);
   };
 
   return (
-    <aside className={`location-sidebar ${isClosing ? 'location-sidebar--closing' : ''}`} aria-label="Location details">
+    <aside className={`location-sidebar ${isClosing ? 'location-sidebar--closing' : ''}`} aria-label={t('sidebar.locationDetails')}>
       <button
         type="button"
         className="location-sidebar__close"
-        aria-label="Close location details"
+        aria-label={t('sidebar.close')}
         onClick={handleClose}
       >
         ×
@@ -52,46 +54,46 @@ const LocationSidebar = ({
         {location.imageUrl && (
           <img className="location-sidebar__image" src={location.imageUrl} alt="" />
         )}
-        <h2 className="location-sidebar__title">{location.name}</h2>
+        <h2 className="location-sidebar__title">{isFrench ? location.nameFr || location.name : location.name}</h2>
 
-        <div className="location-sidebar__tags" aria-label="Location categories">
+        <div className="location-sidebar__tags" aria-label={t('sidebar.categories')}>
           {categories.map((category) => (
             <span key={category} className="location-sidebar__tag">
-              {category}
+              {translateCategory(category, t)}
             </span>
           ))}
         </div>
 
         <section className="location-sidebar__section">
-          <h2>About</h2>
-          <p>{location.description || 'No description available.'}</p>
+          <h2>{t('sidebar.about')}</h2>
+          <p>{(isFrench ? location.descriptionFr || location.description : location.description) || t('sidebar.noDescription')}</p>
         </section>
 
         <section className="location-sidebar__section">
-          <h2>Contact</h2>
+          <h2>{t('sidebar.contact')}</h2>
           {location.address ? (
             <div className="location-sidebar__row">
-              <span className="location-sidebar__label">Address</span>
+              <span className="location-sidebar__label">{t('sidebar.address')}</span>
               <p>{location.address}</p>
             </div>
           ) : (
             <div className="location-sidebar__row">
-              <span className="location-sidebar__label">Address</span>
-              <p>No address provided.</p>
+              <span className="location-sidebar__label">{t('sidebar.address')}</span>
+              <p>{t('sidebar.noAddress')}</p>
             </div>
           )}
 
           {location.url ? (
             <div className="location-sidebar__row">
-              <span className="location-sidebar__label">Website</span>
+              <span className="location-sidebar__label">{t('sidebar.website')}</span>
               <a href={location.url} target="_blank" rel="noopener noreferrer">
                 {location.url}
               </a>
             </div>
           ) : (
             <div className="location-sidebar__row">
-              <span className="location-sidebar__label">Website</span>
-              <p>No website provided.</p>
+              <span className="location-sidebar__label">{t('sidebar.website')}</span>
+              <p>{t('sidebar.noWebsite')}</p>
             </div>
           )}
         </section>

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import './i18n';
 
 const inputStyle: React.CSSProperties = {
   padding: '0.6rem 0.75rem',
@@ -17,6 +19,7 @@ interface LoginPageProps {
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,12 +37,12 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(json?.error ?? `Login failed (${res.status})`);
+        setError(json?.error ?? `${t('login.failed')} (${res.status})`);
         return;
       }
       onLogin(json.token as string);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('login.failed'));
     } finally {
       setLoading(false);
     }
@@ -66,7 +69,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           gap: '1.25rem',
         }}
       >
-        <h2 style={{ margin: 0 }}>Sign in to manage locations</h2>
+        <h2 style={{ margin: 0 }}>{t('login.title')}</h2>
 
         {error && (
           <div
@@ -84,7 +87,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem' }}>
           <label style={{ display: 'grid', gap: '0.3rem' }}>
-            <span style={{ fontWeight: 600 }}>Username</span>
+            <span style={{ fontWeight: 600 }}>{t('login.username')}</span>
             <input
               type="text"
               autoComplete="username"
@@ -96,7 +99,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           </label>
 
           <label style={{ display: 'grid', gap: '0.3rem' }}>
-            <span style={{ fontWeight: 600 }}>Password</span>
+            <span style={{ fontWeight: 600 }}>{t('login.password')}</span>
             <input
               type="password"
               autoComplete="current-password"
@@ -120,7 +123,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               marginTop: '0.25rem',
             }}
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? t('login.signingIn') : t('login.signIn')}
           </button>
         </form>
       </div>

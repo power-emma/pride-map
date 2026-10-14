@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next';
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MapComponent from './MapComponent';
 import Header from './components/Header';
@@ -18,6 +19,7 @@ function getStoredToken(): string | null {
 }
 
 function App() {
+	const { t } = useTranslation();
 	const [selectedLocation, setSelectedLocation] = useState<{lat: number, lng: number, name: string} | null>(null);
 	const [selectedDetails, setSelectedDetails] = useState<LocationSidebarItem | null>(null);
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -29,8 +31,10 @@ function App() {
 		setSelectedLocation({lat, lng, name});
 		setSelectedDetails({
 			name,
+			nameFr: details?.nameFr ?? null,
 			categories: details?.categories ?? [],
 			description: details?.description ?? null,
+			descriptionFr: details?.descriptionFr ?? null,
 			address: details?.address ?? null,
 			url: details?.url ?? null,
 			imageUrl: details?.imageUrl ?? null,
@@ -70,7 +74,7 @@ function App() {
 											onClick={() => setServicesOpen(open => !open)}
 											aria-expanded={servicesOpen}
 										>
-											See all
+											{t('map.seeAll')}
 										</button>
 									)}
 								</div>
@@ -94,19 +98,19 @@ function App() {
 
 							<aside
 								className={`services-drawer ${servicesOpen ? 'services-drawer--open' : ''}`}
-								aria-label="Off-map services"
+								aria-label={t('map.drawerLabel')}
 								aria-hidden={!servicesOpen}
 							>
 								<button
 									type="button"
 									className="services-drawer__close"
-									aria-label="Close off-map services"
+									aria-label={t('map.closeServices')}
 									onClick={() => setServicesOpen(false)}
 								>
 									×
 								</button>
 								<div className="services-drawer__body">
-									<CardDeck title={'Off-Map Services!'} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} searchQuery={searchQuery} />
+									<CardDeck title={t('map.servicesTitle')} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} searchQuery={searchQuery} />
 								</div>
 							</aside>
 						</div>

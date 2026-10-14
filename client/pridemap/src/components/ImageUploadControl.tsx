@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ImageUploadControlProps {
   authToken: string;
@@ -18,6 +19,7 @@ const buttonStyle: React.CSSProperties = {
 };
 
 export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onChange }: ImageUploadControlProps) {
+  const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -29,7 +31,7 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
   if (!uploadUrl) {
     return (
       <div style={{ fontSize: 13, opacity: 0.6 }}>
-        Save first, then you can upload a photo here.
+        {t('imageUpload.saveFirst')}
       </div>
     );
   }
@@ -55,7 +57,7 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
       setCacheBust(n => n + 1);
       onChange(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload');
+      setError(err instanceof Error ? err.message : t('imageUpload.failedUpload'));
     } finally {
       setUploading(false);
     }
@@ -77,7 +79,7 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
       }
       onChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove');
+      setError(err instanceof Error ? err.message : t('imageUpload.failedRemove'));
     } finally {
       setDeleting(false);
     }
@@ -98,7 +100,7 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
             disabled={deleting}
             style={{ ...buttonStyle, border: '1px solid #ff5a5a', color: '#ff5a5a', width: 'fit-content', cursor: deleting ? 'not-allowed' : 'pointer' }}
           >
-            {deleting ? 'Removing…' : 'Remove uploaded photo'}
+            {deleting ? t('imageUpload.removing') : t('imageUpload.remove')}
           </button>
         </div>
       )}
@@ -115,7 +117,7 @@ export default function ImageUploadControl({ authToken, uploadUrl, hasImage, onC
           disabled={!file || uploading}
           style={{ ...buttonStyle, cursor: (!file || uploading) ? 'not-allowed' : 'pointer' }}
         >
-          {uploading ? 'Uploading…' : hasImage ? 'Replace photo' : 'Upload photo'}
+          {uploading ? t('imageUpload.uploading') : hasImage ? t('imageUpload.replace') : t('imageUpload.upload')}
         </button>
       </div>
       {error && <div style={{ fontSize: 13, color: '#ff5a5a' }}>{error}</div>}

@@ -9,7 +9,9 @@
 CREATE TABLE IF NOT EXISTS events (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
+    title_fr VARCHAR(255),
     description TEXT,
+    description_fr TEXT,
     event_date DATE NOT NULL,
     event_time TIME,
     location VARCHAR(255),

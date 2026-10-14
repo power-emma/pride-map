@@ -18,7 +18,9 @@ CREATE TABLE categories (
 CREATE TABLE locations (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    name_fr VARCHAR(255),
     description TEXT,
+    description_fr TEXT,
     address VARCHAR(255),
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
@@ -236,7 +238,9 @@ CREATE TABLE admin_users (
 CREATE TABLE submissions (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    name_fr VARCHAR(255),
     description TEXT,
+    description_fr TEXT,
     address VARCHAR(255),
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
@@ -259,7 +263,9 @@ CREATE INDEX submissions_status_idx ON submissions (status, created_at);
 CREATE TABLE events (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
+    title_fr VARCHAR(255),
     description TEXT,
+    description_fr TEXT,
     event_date DATE NOT NULL,
     event_time TIME,
     location VARCHAR(255),

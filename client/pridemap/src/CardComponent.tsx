@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import type { MouseEvent } from 'react';
 import { CATEGORY_COLOURS, DEFAULT_COLOUR } from './categoryColours';
+import './i18n';
+import { useTranslation } from 'react-i18next';
+import { translateCategory } from './categoryTranslations';
 
 const CardComponent = ({
     title,
+    nameEnglish = title,
+    nameFrench,
     description,
+    descriptionFrench,
     buttonText,
     url,
     imageUrl,
@@ -14,15 +20,22 @@ const CardComponent = ({
     onLocationSelect
 }: {
     title: string,
+    nameEnglish?: string,
+    nameFrench?: string | null,
     description: string,
+    descriptionFrench?: string | null,
     buttonText: string,
     url?: string | null,
     imageUrl?: string | null,
     latitude?: number | null,
     longitude?: number | null,
     categories?: string[],
-    onLocationSelect?: (lat: number, lng: number, name: string) => void
+    onLocationSelect?: (lat: number, lng: number, name: string, details?: { nameFr?: string | null; description?: string | null; descriptionFr?: string | null; address?: string | null; url?: string | null; imageUrl?: string | null; categories?: string[] }) => void
 }) => {
+    const { t, i18n } = useTranslation();
+    const shownDescription = i18n.language.startsWith('fr')
+        ? descriptionFrench || description || t('cards.noDescription')
+        : description || t('cards.noDescription');
     const [open, setOpen] = useState(false);
 
     const hasLocation = latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined;
@@ -30,7 +43,18 @@ const CardComponent = ({
     const handleSeeOnMap = (e: MouseEvent) => {
         e.preventDefault();
         if (hasLocation && latitude && longitude && onLocationSelect) {
-            onLocationSelect(latitude, longitude, title);
+            if (nameFrench || descriptionFrench) {
+                onLocationSelect(latitude, longitude, nameEnglish, {
+                    nameFr: nameFrench,
+                    description,
+                    descriptionFr: descriptionFrench,
+                    url,
+                    imageUrl,
+                    categories,
+                });
+            } else {
+                onLocationSelect(latitude, longitude, nameEnglish);
+            }
         }
     };
 
@@ -71,7 +95,7 @@ const CardComponent = ({
                                 whiteSpace: 'nowrap',
                                 letterSpacing: '0.02em',
                             }}>
-                                {cat}
+                                {translateCategory(cat, t)}
                             </span>
                         );
                     })}
@@ -103,7 +127,7 @@ const CardComponent = ({
                         margin: '0 0 12px 0',
                         lineHeight: 1.6,
                     }}>
-                        {description}
+                        {shownDescription}
                     </p>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {hasLocation && (
@@ -124,7 +148,7 @@ const CardComponent = ({
                                 onMouseOver={(e) => e.currentTarget.style.opacity = '0.8'}
                                 onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
                             >
-                                See on Map
+                                {t('cards.seeOnMap')}
                             </a>
                         )}
                         {url && (

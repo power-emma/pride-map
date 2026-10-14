@@ -110,7 +110,9 @@ router.post('/', async (req, res) => {
 
     // 3) Validate fields.
     const name = emptyToNull(req.body?.name);
-    if (!name) {
+    const nameFr = emptyToNull(req.body?.name_fr);
+    const submittedName = name || nameFr;
+    if (!submittedName) {
       return res.status(400).json({ error: 'name is required' });
     }
 
@@ -120,6 +122,7 @@ router.post('/', async (req, res) => {
     }
 
     const description = emptyToNull(req.body?.description);
+    const descriptionFr = emptyToNull(req.body?.description_fr);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
@@ -144,10 +147,10 @@ router.post('/', async (req, res) => {
     // 4) Persist as a pending submission.
     const result = await pool.query(
       `INSERT INTO submissions
-         (name, description, address, latitude, longitude, url, image_url, submitter_email, category_ids, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, submitter_email, category_ids, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
        RETURNING id`,
-      [name, description, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds]
+      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds]
     );
 
     // 5) Record the successful submission for rate limiting.
@@ -177,7 +180,7 @@ router.get('/', requireAuth, async (req, res) => {
     let result;
     if (status === 'all') {
       result = await pool.query(
-        `SELECT id, name, description, address,
+        `SELECT id, name, name_fr, description, description_fr, address,
                 latitude::float8 AS latitude, longitude::float8 AS longitude,
                 url, image_url, (image_data IS NOT NULL) AS has_image,
                 submitter_email, category_ids, status, created_at, reviewed_at
@@ -189,7 +192,7 @@ router.get('/', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Invalid status filter' });
       }
       result = await pool.query(
-        `SELECT id, name, description, address,
+        `SELECT id, name, name_fr, description, description_fr, address,
                 latitude::float8 AS latitude, longitude::float8 AS longitude,
                 url, image_url, (image_data IS NOT NULL) AS has_image,
                 submitter_email, category_ids, status, created_at, reviewed_at
@@ -221,7 +224,9 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const name = emptyToNull(req.body?.name);
-    if (!name) {
+    const nameFr = emptyToNull(req.body?.name_fr);
+    const submittedName = name || nameFr;
+    if (!submittedName) {
       return res.status(400).json({ error: 'name is required' });
     }
 
@@ -231,6 +236,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const description = emptyToNull(req.body?.description);
+    const descriptionFr = emptyToNull(req.body?.description_fr);
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
@@ -254,13 +260,14 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     const result = await pool.query(
       `UPDATE submissions
-         SET name = $1, description = $2, address = $3, latitude = $4,
-             longitude = $5, url = $6, image_url = $7, submitter_email = $8, category_ids = $9
-       WHERE id = $10 AND status = 'pending'
-       RETURNING id, name, description, address,
+         SET name = $1, name_fr = $2, description = $3, description_fr = $4,
+             address = $5, latitude = $6, longitude = $7, url = $8,
+             image_url = $9, submitter_email = $10, category_ids = $11
+       WHERE id = $12 AND status = 'pending'
+       RETURNING id, name, name_fr, description, description_fr, address,
                  latitude::float8 AS latitude, longitude::float8 AS longitude,
                  url, image_url, submitter_email, category_ids, status, created_at`,
-      [name, description, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds, id]
+      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds, id]
     );
 
     if (result.rowCount === 0) {
@@ -291,7 +298,7 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
     await client.query('BEGIN');
 
     const sub = await client.query(
-      `SELECT name, description, address, latitude, longitude, url, image_url,
+      `SELECT name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
               image_data, image_mime_type, category_ids, status
        FROM submissions WHERE id = $1 FOR UPDATE`,
       [id]
@@ -309,9 +316,9 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
     const s = sub.rows[0];
 
     const loc = await client.query(
-      `INSERT INTO locations (name, description, address, latitude, longitude, url, image_url, image_data, image_mime_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [s.name, s.description, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type]
+      `INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, image_data, image_mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type]
     );
     const locationId = loc.rows[0].id;
 
