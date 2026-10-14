@@ -144,6 +144,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const [hasImage, setHasImage] = useState(false);
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
 
+  const [geocodeResults, setGeocodeResults] = useState<Array<{ displayName: string; latitude: string; longitude: string }>>([]);
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -352,9 +356,64 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     setImageUrl('');
     setHasImage(false);
     setCategoryIds([]);
+    setGeocodeResults([]);
+    setGeocodeError(null);
     setSaveError(null);
     setSaveSuccess(null);
     setConfirmDelete(false);
+  }
+
+  async function handleGeocode() {
+    const query = address.trim();
+    if (!query) {
+      setGeocodeResults([]);
+      setGeocodeError('Enter a street address before geocoding.');
+      return;
+    }
+
+    setGeocodeError(null);
+    setGeocoding(true);
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Geocoding failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
+      const results = data
+        .filter((item) => typeof item.display_name === 'string' && item.lat && item.lon)
+        .map((item) => ({
+          displayName: item.display_name as string,
+          latitude: String(item.lat),
+          longitude: String(item.lon),
+        }))
+        .filter((item) => Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)));
+
+      if (results.length === 0) {
+        setGeocodeResults([]);
+        setGeocodeError('No matching addresses found. Try a more specific street address.');
+        return;
+      }
+
+      setGeocodeResults(results);
+    } catch (err) {
+      setGeocodeResults([]);
+      setGeocodeError(err instanceof Error ? err.message : 'Could not geocode this address.');
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  function handleSelectGeocodeResult(result: { displayName: string; latitude: string; longitude: string }) {
+    setAddress(result.displayName);
+    setLatitude(result.latitude);
+    setLongitude(result.longitude);
+    setGeocodeResults([]);
+    setGeocodeError(null);
   }
 
   function selectLocation(loc: Location) {
@@ -705,10 +764,69 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} style={inputStyle} />
       </label>
 
-      <label style={labelStyle}>
+      <div style={labelStyle}>
         <span style={{ fontWeight: 600 }}>Address</span>
-        <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
-      </label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'start' }}>
+          <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
+          <button
+            type="button"
+            onClick={handleGeocode}
+            disabled={geocoding || address.trim().length === 0}
+            style={{
+              padding: '0.55rem 0.8rem',
+              borderRadius: 8,
+              border: '1px solid #444',
+              fontWeight: 700,
+              cursor: geocoding || address.trim().length === 0 ? 'not-allowed' : 'pointer',
+              opacity: geocoding || address.trim().length === 0 ? 0.65 : 1,
+            }}
+          >
+            {geocoding ? 'Geocoding…' : 'Geocode'}
+          </button>
+        </div>
+
+        {geocodeError && (
+          <div style={{ color: '#ff9a9a', fontSize: 13 }}>{geocodeError}</div>
+        )}
+
+        {geocodeResults.length > 0 && (
+          <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.25rem' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.8 }}>Choose a matching address</div>
+            <div
+              style={{
+                display: 'grid',
+                gap: '0.45rem',
+                padding: '0.5rem',
+                border: '1px solid #444',
+                borderRadius: 10,
+                background: '#171717',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)',
+              }}
+            >
+              {geocodeResults.map((result) => (
+                <button
+                  key={`${result.displayName}-${result.latitude}-${result.longitude}`}
+                  type="button"
+                  onClick={() => handleSelectGeocodeResult(result)}
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.7rem 0.8rem',
+                    borderRadius: 8,
+                    border: '1px solid #4a4a4a',
+                    background: '#202020',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    lineHeight: 1.5,
+                    transition: 'border-color 0.15s ease, background 0.15s ease',
+                  }}
+                >
+                  {result.displayName}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
         <label style={labelStyle}>
