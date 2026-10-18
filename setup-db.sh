@@ -217,7 +217,8 @@ for migration in \
     add-events-table.sql \
     add-french-event-content.sql \
     add-image-columns.sql \
-    add-image-blob-columns.sql; do
+    add-image-blob-columns.sql \
+    add-user-accounts.sql; do
     MIGRATION_SQL="$SCRIPT_DIR/server/$migration"
     if [ -f "$MIGRATION_SQL" ]; then
         echo "Applying database migration '$migration'..."
@@ -235,7 +236,7 @@ done
 echo "Verifying database setup..."
 
 verification_failed=false
-for tbl in categories locations location_categories admin_users submissions events; do
+for tbl in categories locations location_categories admin_users users password_change_requests submissions events; do
     exists=$(run_psql_db -tAc "SELECT to_regclass('public.$tbl') IS NOT NULL;" 2>/dev/null | xargs)
     if [ "$exists" = "t" ]; then
         echo "  ✓ table '$tbl' present"
@@ -248,7 +249,8 @@ done
 for column in \
     locations.name_fr locations.description_fr locations.image_url locations.image_data locations.image_mime_type \
     submissions.name_fr submissions.description_fr submissions.image_url submissions.image_data submissions.image_mime_type \
-    events.title_fr events.description_fr events.location_id events.image_url events.image_data events.image_mime_type; do
+    events.title_fr events.description_fr events.location_id events.image_url events.image_data events.image_mime_type \
+    locations.owner_id events.owner_id submissions.user_id; do
     tbl=${column%%.*}
     col=${column#*.}
     exists=$(run_psql_db -tAc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$tbl' AND column_name = '$col');" 2>/dev/null | xargs)
@@ -269,11 +271,13 @@ fi
 CATEGORY_COUNT=$(run_psql_db -tAc "SELECT COUNT(*) FROM categories;" | xargs)
 LOCATION_COUNT=$(run_psql_db -tAc "SELECT COUNT(*) FROM locations;" | xargs)
 SUBMISSION_COUNT=$(run_psql_db -tAc "SELECT COUNT(*) FROM submissions;" | xargs)
+USER_COUNT=$(run_psql_db -tAc "SELECT COUNT(*) FROM users;" | xargs)
 
 echo "Database verification complete:"
 echo "  - Categories:  $CATEGORY_COUNT"
 echo "  - Locations:   $LOCATION_COUNT"
 echo "  - Submissions: $SUBMISSION_COUNT (pending-review queue)"
+echo "  - Users:       $USER_COUNT"
 
 echo ""
 echo "Database setup complete!"

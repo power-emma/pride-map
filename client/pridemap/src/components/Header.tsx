@@ -4,11 +4,13 @@ import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
     authToken?: string | null;
+    /** Admins see "Admin dashboard" instead of "My dashboard". */
+    isAdmin?: boolean;
     onLogout?: () => void;
     children?: React.ReactNode;
 }
 
-export const Header: React.FC<HeaderProps> = ({ authToken, onLogout, children }) => {
+export const Header: React.FC<HeaderProps> = ({ authToken, isAdmin = false, onLogout, children }) => {
     const { t, i18n: locale } = useTranslation();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -67,7 +69,9 @@ export const Header: React.FC<HeaderProps> = ({ authToken, onLogout, children })
                             className="site-header__dropdown-item"
                             onClick={() => setMenuOpen(false)}
                         >
-                            {authToken ? t('header.manageLocations') : t('header.signIn')}
+                            {authToken
+                                ? (isAdmin ? t('header.adminDashboard') : t('header.myDashboard'))
+                                : t('header.signIn')}
                         </Link>
                         {authToken && onLogout && (
                             <button

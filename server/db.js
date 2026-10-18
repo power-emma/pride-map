@@ -5,7 +5,7 @@ const pool = new Pool({
     password: 'Postgres!',
     host: 'localhost',
     port: 5432,
-    database: 'pridemap',
+    database: process.env.PGDATABASE || 'pridemap',
     // Cap pool size so the server never exhausts DB connections
     max: 10,
     // Fail fast if the DB is unreachable rather than hanging indefinitely

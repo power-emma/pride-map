@@ -14,6 +14,32 @@ CREATE TABLE categories (
     name VARCHAR(255) NOT NULL
 );
 
+-- Accounts. Anyone can register to submit and manage their own locations and
+-- events; admins (is_admin) review submissions and manage every account.
+-- Passwords are bcrypt hashes; use add-user.sh to create admin accounts.
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255),
+    password_hash TEXT NOT NULL,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Tokens issued before this moment are rejected.
+    password_changed_at TIMESTAMPTZ
+);
+
+-- Password changes awaiting admin approval (the new password, pre-hashed).
+CREATE TABLE password_change_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    password_hash TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending | approved | denied
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ
+);
+
+CREATE INDEX password_change_requests_status_idx ON password_change_requests (status, created_at);
+
 -- Table for the locations
 CREATE TABLE locations (
     id SERIAL PRIMARY KEY,
@@ -28,8 +54,12 @@ CREATE TABLE locations (
     image_url TEXT,
     -- Uploaded image, stored as a BLOB; takes priority over image_url when set.
     image_data BYTEA,
-    image_mime_type VARCHAR(100)
+    image_mime_type VARCHAR(100),
+    -- The account that manages this location; NULL means admin-managed.
+    owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
+
+CREATE INDEX locations_owner_idx ON locations (owner_id);
 
 -- Junction table linking locations to their categories (many-to-many)
 CREATE TABLE location_categories (
@@ -221,8 +251,8 @@ SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Wisdom 2 action
 UNION ALL
 SELECT l.id, c.id FROM locations l, categories c WHERE l.name = 'Youth Services Bureau'                           AND c.name = 'Employment Services';
 
--- Table for admin users (manage-locations page authentication)
--- Passwords are stored as bcrypt hashes; use the add-user.sh script to create users.
+-- Legacy admin logins, from before `users` existed. add-user-accounts.sql
+-- copies these into `users` as admins; nothing reads this table any more.
 CREATE TABLE admin_users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
@@ -230,10 +260,10 @@ CREATE TABLE admin_users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Public business submissions awaiting admin review.
--- Anyone can create a row here via the public submission form (CAPTCHA + rate
--- limited); an admin then approves it (which copies it into `locations`) or
--- rejects it from the Manage Locations tab. category_ids is stored as a plain
+-- Business submissions awaiting admin review.
+-- Any signed-in user can create a row here via the submission form (rate
+-- limited per account); an admin then approves it (which copies it into
+-- `locations`, owned by the submitter) or rejects it from the dashboard. category_ids is stored as a plain
 -- integer array because the submission is not yet a normalized location.
 CREATE TABLE submissions (
     id SERIAL PRIMARY KEY,
@@ -248,8 +278,9 @@ CREATE TABLE submissions (
     image_url TEXT,
     image_data BYTEA,
     image_mime_type VARCHAR(100),
-    submitter_email VARCHAR(255) NOT NULL,
+    submitter_email VARCHAR(255),
     category_ids INTEGER[] NOT NULL DEFAULT '{}',
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending | approved | rejected
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     reviewed_at TIMESTAMPTZ
@@ -257,9 +288,10 @@ CREATE TABLE submissions (
 
 -- Fast lookup of the pending queue shown in the admin UI
 CREATE INDEX submissions_status_idx ON submissions (status, created_at);
+CREATE INDEX submissions_user_idx ON submissions (user_id);
 
--- Events shown as "Happening in <city>" cards on the main map. Admins create
--- and manage these from the Manage Locations page.
+-- Events shown as "Happening in <city>" cards on the main map. Signed-in users
+-- create and manage their own from the dashboard; admins manage all of them.
 CREATE TABLE events (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
@@ -277,9 +309,12 @@ CREATE TABLE events (
     image_url TEXT,
     image_data BYTEA,
     image_mime_type VARCHAR(100),
+    -- The account that manages this event; NULL means admin-managed.
+    owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Fast lookup of the upcoming-events queue shown on the map
 CREATE INDEX events_date_idx ON events (event_date);
+CREATE INDEX events_owner_idx ON events (owner_id);
 CREATE INDEX events_location_id_idx ON events (location_id);

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAdmin, ownershipFilter } = require('../middleware/auth');
 const { handleImageUpload } = require('../middleware/upload');
 
 function emptyToNull(value) {
@@ -18,10 +18,9 @@ function parseNullableFloat(value) {
   return num;
 }
 
-// GET all locations with their categories
-router.get('/', async (req, res) => {
-  try {
-    const result = await pool.query(`
+// Every location with its categories, optionally narrowed by a WHERE clause.
+function selectLocations(where = '', params = []) {
+  return pool.query(`
       SELECT
         l.id,
         l.name,
@@ -40,12 +39,30 @@ router.get('/', async (req, res) => {
         ) AS category_ids
       FROM locations l
       LEFT JOIN location_categories lc ON lc.id_location = l.id
+      ${where}
       GROUP BY l.id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
       ORDER BY l.name
-    `);
+    `, params);
+}
+
+// GET all locations with their categories
+router.get('/', async (req, res) => {
+  try {
+    const result = await selectLocations();
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching locations:', error);
+    res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// GET /locations/mine — the signed-in user's own live locations.
+router.get('/mine', requireAuth, async (req, res) => {
+  try {
+    const result = await selectLocations('WHERE l.owner_id = $1', [req.user.id]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching own locations:', error);
     res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
@@ -58,7 +75,7 @@ function parseCategoryIds(raw) {
   return ids;
 }
 
-// PUT update an existing location
+// PUT update an existing location — its owner or an admin
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -96,9 +113,11 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
+    const params = [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id];
     const result = await pool.query(
-      'UPDATE locations SET name=$1, name_fr=$2, description=$3, description_fr=$4, address=$5, latitude=$6, longitude=$7, url=$8, image_url=$9 WHERE id=$10 RETURNING id',
-      [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id]
+      `UPDATE locations SET name=$1, name_fr=$2, description=$3, description_fr=$4, address=$5, latitude=$6, longitude=$7, url=$8, image_url=$9
+       WHERE id=$10${ownershipFilter(req.user, params)} RETURNING id`,
+      params
     );
 
     if (result.rowCount === 0) {
@@ -121,7 +140,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// DELETE a location
+// DELETE a location — its owner or an admin
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -129,7 +148,11 @@ router.delete('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
-    const result = await pool.query('DELETE FROM locations WHERE id = $1 RETURNING id', [id]);
+    const params = [id];
+    const result = await pool.query(
+      `DELETE FROM locations WHERE id = $1${ownershipFilter(req.user, params)} RETURNING id`,
+      params
+    );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });
     }
@@ -141,7 +164,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/', requireAuth, async (req, res) => {
+// POST a new live location — admin only. Everyone else goes through the
+// /submissions approval queue.
+router.post('/', requireAdmin, async (req, res) => {
   try {
     const name = emptyToNull(req.body?.name);
     if (!name) {
@@ -232,7 +257,7 @@ router.get('/:id/image', async (req, res) => {
   }
 });
 
-// POST /locations/:id/image — admin only. Uploads (replacing) the image BLOB.
+// POST /locations/:id/image — owner or admin. Uploads (replacing) the image BLOB.
 router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -240,9 +265,10 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
+    const params = [req.file.buffer, req.file.mimetype, id];
     const result = await pool.query(
-      'UPDATE locations SET image_data = $1, image_mime_type = $2 WHERE id = $3 RETURNING id',
-      [req.file.buffer, req.file.mimetype, id]
+      `UPDATE locations SET image_data = $1, image_mime_type = $2 WHERE id = $3${ownershipFilter(req.user, params)} RETURNING id`,
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });
@@ -255,7 +281,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   }
 });
 
-// DELETE /locations/:id/image — admin only. Clears the uploaded BLOB.
+// DELETE /locations/:id/image — owner or admin. Clears the uploaded BLOB.
 router.delete('/:id/image', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -263,9 +289,10 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_LOCATION_ID' });
     }
 
+    const params = [id];
     const result = await pool.query(
-      'UPDATE locations SET image_data = NULL, image_mime_type = NULL WHERE id = $1 RETURNING id',
-      [id]
+      `UPDATE locations SET image_data = NULL, image_mime_type = NULL WHERE id = $1${ownershipFilter(req.user, params)} RETURNING id`,
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'LOCATION_NOT_FOUND' });

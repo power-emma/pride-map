@@ -2,7 +2,8 @@ import i18n from './i18n';
 
 const apiErrorKeys: Record<string, string> = {
   A_VALID_EMAIL_REQUIRED: 'errors.emailRequired',
-  CAPTCHA_VERIFICATION_FAILED: 'errors.captchaFailed',
+  ADMIN_REQUIRED: 'errors.adminRequired',
+  CANNOT_DELETE_SELF: 'errors.cannotDeleteSelf',
   CREDENTIALS_REQUIRED: 'errors.credentialsRequired',
   EVENT_NOT_FOUND: 'errors.eventNotFound',
   IMAGE_FILE_REQUIRED: 'errors.imageFileRequired',
@@ -17,9 +18,12 @@ const apiErrorKeys: Record<string, string> = {
   INVALID_LOCATION_ID: 'errors.invalidLocationId',
   INVALID_LONGITUDE: 'errors.invalidLongitude',
   INVALID_OR_EXPIRED_TOKEN: 'errors.invalidToken',
+  INVALID_PASSWORD_REQUEST_ID: 'errors.passwordRequestNotFound',
   INVALID_STATUS_FILTER: 'errors.invalidStatusFilter',
   INVALID_SUBMISSION_ID: 'errors.invalidSubmissionId',
   INVALID_SUBMISSION_STATUS: 'errors.submissionNotPending',
+  INVALID_USER_ID: 'errors.userNotFound',
+  INVALID_USERNAME: 'errors.invalidUsername',
   IMAGE_TOO_LARGE: 'errors.imageTooLarge',
   INVALID_COORDINATES: 'errors.invalidCoordinates',
   LINKED_LOCATION_NOT_FOUND: 'errors.linkedLocationNotFound',
@@ -29,12 +33,19 @@ const apiErrorKeys: Record<string, string> = {
   NO_IMAGE_FILE: 'errors.imageFileRequired',
   NO_LOCATION_IMAGE: 'errors.noLocationImage',
   NO_SUBMISSION_IMAGE: 'errors.noSubmissionImage',
+  PASSWORD_REQUEST_NOT_FOUND: 'errors.passwordRequestNotFound',
+  PASSWORD_REQUEST_RATE_LIMIT: 'errors.passwordRequestRateLimit',
+  PASSWORD_TOO_SHORT: 'errors.passwordTooShort',
   PENDING_SUBMISSION_NOT_FOUND: 'errors.pendingSubmissionNotFound',
+  REGISTRATION_RATE_LIMIT: 'errors.registrationRateLimit',
   SUBMISSION_NOT_FOUND: 'errors.submissionNotFound',
   SUBMISSION_RATE_LIMIT: 'errors.submissionRateLimit',
   TITLE_REQUIRED: 'errors.titleRequired',
   UNAUTHENTICATED: 'errors.authenticationRequired',
   UNSUPPORTED_IMAGE_TYPE: 'errors.unsupportedImageType',
+  USER_NOT_FOUND: 'errors.userNotFound',
+  USERNAME_REQUIRED: 'errors.usernameRequired',
+  USERNAME_TAKEN: 'errors.usernameTaken',
 };
 
 export function localizedApiError(code: unknown, status?: number): string {

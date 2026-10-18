@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { requireAuth } = require('../middleware/auth');
-const { turnstileSecret } = require('../config');
+const { requireAuth, requireAdmin, ownershipFilter } = require('../middleware/auth');
+const { createRateLimiter, rejectIfLimited } = require('../middleware/rateLimit');
 const { handleImageUpload } = require('../middleware/upload');
 
 // ---------------------------------------------------------------------------
@@ -37,88 +37,31 @@ function isValidEmail(value) {
   return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-// ---------------------------------------------------------------------------
-// In-memory rate limiter: one submission per IP per RATE_LIMIT_MS.
-// Resets on server restart (by design — see the chosen tracking approach).
-// ---------------------------------------------------------------------------
+// Generous per-account cap — enough for an organisation listing several
+// spaces, low enough to stop a runaway script.
+const submissionLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
 
-const RATE_LIMIT_MS = 10 * 60 * 1000; // 10 minutes
-const lastSubmissionByIp = new Map(); // ip -> epoch ms of last accepted submission
-
-// Occasionally drop stale entries so the map doesn't grow unbounded.
-function pruneRateLimitMap(now) {
-  if (lastSubmissionByIp.size < 1000) return;
-  for (const [ip, ts] of lastSubmissionByIp) {
-    if (now - ts > RATE_LIMIT_MS) lastSubmissionByIp.delete(ip);
-  }
-}
+// Columns shared by every submission listing.
+const SUBMISSION_COLUMNS = `
+  s.id, s.name, s.name_fr, s.description, s.description_fr, s.address,
+  s.latitude::float8 AS latitude, s.longitude::float8 AS longitude,
+  s.url, s.image_url, (s.image_data IS NOT NULL) AS has_image,
+  s.submitter_email, s.category_ids, s.status, s.created_at, s.reviewed_at`;
 
 // ---------------------------------------------------------------------------
-// Cloudflare Turnstile verification
+// POST /submissions  — any signed-in user, rate limited per account
 // ---------------------------------------------------------------------------
 
-const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-
-async function verifyTurnstile(token, remoteip) {
-  if (!token || typeof token !== 'string') return false;
-
-  const body = new URLSearchParams();
-  body.append('secret', turnstileSecret);
-  body.append('response', token);
-  if (remoteip) body.append('remoteip', remoteip);
-
+router.post('/', requireAuth, async (req, res) => {
   try {
-    const res = await fetch(TURNSTILE_VERIFY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    const data = await res.json();
-    return data.success === true;
-  } catch (error) {
-    console.error('Turnstile verification request failed:', error);
-    return false;
-  }
-}
+    if (rejectIfLimited(submissionLimiter, req.user.id, res, 'SUBMISSION_RATE_LIMIT')) return;
 
-// ---------------------------------------------------------------------------
-// POST /submissions  — public, CAPTCHA-protected, rate limited
-// ---------------------------------------------------------------------------
-
-router.post('/', async (req, res) => {
-  try {
-    const now = Date.now();
-    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-
-    // 1) Rate limit before doing any real work.
-    const last = lastSubmissionByIp.get(ip);
-    if (last && now - last < RATE_LIMIT_MS) {
-      const retryAfterSec = Math.ceil((RATE_LIMIT_MS - (now - last)) / 1000);
-      res.set('Retry-After', String(retryAfterSec));
-      return res.status(429).json({
-        code: 'SUBMISSION_RATE_LIMIT',
-        retryAfterSeconds: retryAfterSec,
-      });
-    }
-
-    // 2) CAPTCHA.
-    const captchaToken = req.body?.captchaToken;
-    const captchaOk = await verifyTurnstile(captchaToken, ip);
-    if (!captchaOk) {
-      return res.status(400).json({ code: 'CAPTCHA_VERIFICATION_FAILED' });
-    }
-
-    // 3) Validate fields.
+    // Validate fields.
     const name = emptyToNull(req.body?.name);
     const nameFr = emptyToNull(req.body?.name_fr);
     const submittedName = name || nameFr;
     if (!submittedName) {
       return res.status(400).json({ code: 'NAME_REQUIRED' });
-    }
-
-    const submitterEmail = emptyToNull(req.body?.submitter_email);
-    if (!submitterEmail || !isValidEmail(submitterEmail)) {
-      return res.status(400).json({ code: 'A_VALID_EMAIL_REQUIRED' });
     }
 
     const description = emptyToNull(req.body?.description);
@@ -144,18 +87,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
-    // 4) Persist as a pending submission.
+    // Persist as a pending submission. The contact email is a snapshot of the
+    // account's, so admins can still reach the submitter if it changes later.
     const result = await pool.query(
       `INSERT INTO submissions
-         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, submitter_email, category_ids, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, submitter_email, category_ids, user_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending')
        RETURNING id`,
-      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds]
+      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, req.user.email, categoryIds, req.user.id]
     );
 
-    // 5) Record the successful submission for rate limiting.
-    lastSubmissionByIp.set(ip, now);
-    pruneRateLimitMap(now);
+    submissionLimiter.record(req.user.id);
 
     return res.status(201).json({
       id: result.rows[0]?.id,
@@ -173,35 +115,28 @@ router.post('/', async (req, res) => {
 // Pass ?status=approved|rejected|all to see others.
 // ---------------------------------------------------------------------------
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAdmin, async (req, res) => {
   try {
     const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
-
-    let result;
-    if (status === 'all') {
-      result = await pool.query(
-        `SELECT id, name, name_fr, description, description_fr, address,
-                latitude::float8 AS latitude, longitude::float8 AS longitude,
-                url, image_url, (image_data IS NOT NULL) AS has_image,
-                submitter_email, category_ids, status, created_at, reviewed_at
-         FROM submissions
-         ORDER BY created_at DESC`
-      );
-    } else {
-      if (!['pending', 'approved', 'rejected'].includes(status)) {
-        return res.status(400).json({ code: 'INVALID_STATUS_FILTER' });
-      }
-      result = await pool.query(
-        `SELECT id, name, name_fr, description, description_fr, address,
-                latitude::float8 AS latitude, longitude::float8 AS longitude,
-                url, image_url, (image_data IS NOT NULL) AS has_image,
-                submitter_email, category_ids, status, created_at, reviewed_at
-         FROM submissions
-         WHERE status = $1
-         ORDER BY created_at DESC`,
-        [status]
-      );
+    if (!['pending', 'approved', 'rejected', 'all'].includes(status)) {
+      return res.status(400).json({ code: 'INVALID_STATUS_FILTER' });
     }
+
+    const params = [];
+    let where = '';
+    if (status !== 'all') {
+      params.push(status);
+      where = 'WHERE s.status = $1';
+    }
+
+    const result = await pool.query(
+      `SELECT ${SUBMISSION_COLUMNS}, u.username AS submitter_username
+       FROM submissions s
+       LEFT JOIN users u ON u.id = s.user_id
+       ${where}
+       ORDER BY s.created_at DESC`,
+      params
+    );
 
     return res.json(result.rows);
   } catch (error) {
@@ -211,9 +146,31 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// PUT /submissions/:id  — admin only. Edit a pending submission in place
-// (e.g. fix typos or add coordinates) before approving it. Only pending
-// submissions can be edited.
+// GET /submissions/mine  — the signed-in user's own submissions, any status,
+// so they can follow what is still awaiting review.
+// ---------------------------------------------------------------------------
+
+router.get('/mine', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ${SUBMISSION_COLUMNS}
+       FROM submissions s
+       WHERE s.user_id = $1
+       ORDER BY s.created_at DESC`,
+      [req.user.id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching own submissions:', error);
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PUT /submissions/:id  — its submitter or an admin. Edit a pending
+// submission in place (e.g. fix typos or add coordinates) before it is
+// approved. Only pending submissions can be edited, and only admins can change
+// the contact email (it is omitted or left blank to keep the current one).
 // ---------------------------------------------------------------------------
 
 router.put('/:id', requireAuth, async (req, res) => {
@@ -230,8 +187,8 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'NAME_REQUIRED' });
     }
 
-    const submitterEmail = emptyToNull(req.body?.submitter_email);
-    if (!submitterEmail || !isValidEmail(submitterEmail)) {
+    const submitterEmail = req.user.isAdmin ? emptyToNull(req.body?.submitter_email) : null;
+    if (submitterEmail !== null && !isValidEmail(submitterEmail)) {
       return res.status(400).json({ code: 'A_VALID_EMAIL_REQUIRED' });
     }
 
@@ -258,16 +215,17 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
+    const params = [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail?.trim() ?? null, categoryIds, id];
     const result = await pool.query(
       `UPDATE submissions
          SET name = $1, name_fr = $2, description = $3, description_fr = $4,
              address = $5, latitude = $6, longitude = $7, url = $8,
-             image_url = $9, submitter_email = $10, category_ids = $11
-       WHERE id = $12 AND status = 'pending'
+             image_url = $9, submitter_email = COALESCE($10, submitter_email), category_ids = $11
+       WHERE id = $12 AND status = 'pending'${ownershipFilter(req.user, params, 'user_id')}
        RETURNING id, name, name_fr, description, description_fr, address,
                  latitude::float8 AS latitude, longitude::float8 AS longitude,
                  url, image_url, submitter_email, category_ids, status, created_at`,
-      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail.trim(), categoryIds, id]
+      params
     );
 
     if (result.rowCount === 0) {
@@ -282,12 +240,40 @@ router.put('/:id', requireAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /submissions/:id/approve  — admin only.
-// Copies the submission into `locations` (+ category links) and marks it
-// approved. Returns the newly created location id.
+// DELETE /submissions/:id  — its submitter or an admin. Withdraws a submission
+// that is still awaiting review.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/approve', requireAuth, async (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
+    }
+
+    const params = [id];
+    const result = await pool.query(
+      `DELETE FROM submissions WHERE id = $1 AND status = 'pending'${ownershipFilter(req.user, params, 'user_id')} RETURNING id`,
+      params
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ code: 'PENDING_SUBMISSION_NOT_FOUND' });
+    }
+
+    return res.json({ deleted: id });
+  } catch (error) {
+    console.error('Error withdrawing submission:', error);
+    return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /submissions/:id/approve  — admin only.
+// Copies the submission into `locations` (+ category links), owned by the
+// submitter, and marks it approved. Returns the newly created location id.
+// ---------------------------------------------------------------------------
+
+router.post('/:id/approve', requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
     const id = parseInt(req.params.id, 10);
@@ -299,7 +285,7 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
 
     const sub = await client.query(
       `SELECT name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
-              image_data, image_mime_type, category_ids, status
+              image_data, image_mime_type, category_ids, user_id, status
        FROM submissions WHERE id = $1 FOR UPDATE`,
       [id]
     );
@@ -316,9 +302,9 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
     const s = sub.rows[0];
 
     const loc = await client.query(
-      `INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, image_data, image_mime_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-      [s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type]
+      `INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, image_data, image_mime_type, owner_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+      [s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type, s.user_id]
     );
     const locationId = loc.rows[0].id;
 
@@ -351,7 +337,7 @@ router.post('/:id/approve', requireAuth, async (req, res) => {
 // POST /submissions/:id/reject  — admin only.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/reject', requireAuth, async (req, res) => {
+router.post('/:id/reject', requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
@@ -374,6 +360,12 @@ router.post('/:id/reject', requireAuth, async (req, res) => {
     return res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
+
+// Admins may touch any submission; submitters only their own pending ones.
+function pendingOwnFilter(user, params) {
+  if (user.isAdmin) return '';
+  return ` AND status = 'pending'${ownershipFilter(user, params, 'user_id')}`;
+}
 
 // GET /submissions/:id/image — public. Same sensitivity as the photo itself
 // becoming public once the submission is approved; only submitter_email is
@@ -403,8 +395,8 @@ router.get('/:id/image', async (req, res) => {
   }
 });
 
-// POST /submissions/:id/image — admin only. Attach/replace a photo while
-// reviewing a pending submission, before approving it.
+// POST /submissions/:id/image — submitter or admin. Attach/replace a photo on
+// a submission; submitters can only change their own while it is pending.
 router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -412,9 +404,11 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
+    const params = [req.file.buffer, req.file.mimetype, id];
     const result = await pool.query(
-      'UPDATE submissions SET image_data = $1, image_mime_type = $2 WHERE id = $3 RETURNING id',
-      [req.file.buffer, req.file.mimetype, id]
+      `UPDATE submissions SET image_data = $1, image_mime_type = $2
+       WHERE id = $3${pendingOwnFilter(req.user, params)} RETURNING id`,
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'SUBMISSION_NOT_FOUND' });
@@ -427,7 +421,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   }
 });
 
-// DELETE /submissions/:id/image — admin only.
+// DELETE /submissions/:id/image — submitter (while pending) or admin.
 router.delete('/:id/image', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -435,9 +429,11 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
+    const params = [id];
     const result = await pool.query(
-      'UPDATE submissions SET image_data = NULL, image_mime_type = NULL WHERE id = $1 RETURNING id',
-      [id]
+      `UPDATE submissions SET image_data = NULL, image_mime_type = NULL
+       WHERE id = $1${pendingOwnFilter(req.user, params)} RETURNING id`,
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'SUBMISSION_NOT_FOUND' });

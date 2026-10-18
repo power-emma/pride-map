@@ -5,9 +5,23 @@ const jwt = require('jsonwebtoken');
 const TEST_JWT_SECRET = 'test-secret-do-not-use-in-production';
 jest.mock('./secret', () => ({ jwtSecret: 'test-secret-do-not-use-in-production' }));
 
-// Helper: create a signed token for protected route tests
-function makeToken() {
-    return jwt.sign({ username: 'testuser' }, TEST_JWT_SECRET, { expiresIn: '1h' });
+// Accounts behind the test tokens: id 1 is an admin, any other id is a
+// regular user. Stubbed separately from ./db so the auth lookup never consumes
+// the per-test pool.query mocks queued for the route itself.
+const ADMIN_ID = 1;
+jest.mock('./userStore', () => ({
+    getUserById: jest.fn((id) => Promise.resolve({
+        id,
+        username: id === 1 ? 'admin' : `user${id}`,
+        email: `user${id}@example.com`,
+        is_admin: id === 1,
+        password_changed_at: null,
+    })),
+}));
+
+// Helper: create a signed token for protected route tests (admin by default)
+function makeToken(id = ADMIN_ID) {
+    return jwt.sign({ id, username: id === ADMIN_ID ? 'admin' : `user${id}` }, TEST_JWT_SECRET, { expiresIn: '1h' });
 }
 
 // Replace ../db with a fake pool before any route module loads it
@@ -365,6 +379,7 @@ describe('Events', () => {
             'Ottawa',
             null,
             null,
+            null,
         ]);
     });
 
@@ -403,76 +418,64 @@ describe('Events', () => {
 });
 
 describe('Submissions', () => {
-    // Stub Cloudflare Turnstile's siteverify endpoint so tests never hit the network.
-    function mockTurnstile(success) {
-        global.fetch = jest.fn(() =>
-            Promise.resolve({ json: () => Promise.resolve({ success }) })
-        );
-    }
-
-    afterEach(() => {
-        if (global.fetch && global.fetch.mockClear) global.fetch.mockClear();
-    });
-
     const validBody = {
         name: 'Rainbow Cafe',
-        submitter_email: 'owner@example.com',
-        captchaToken: 'dummy-token',
         category_ids: [],
     };
 
-    describe('POST /submissions (public)', () => {
-        it('should return 400 when the CAPTCHA fails', async () => {
-            mockTurnstile(false);
+    describe('POST /submissions (signed-in users)', () => {
+        it('should return 401 without a token', async () => {
             const res = await request(app).post('/submissions').send(validBody);
-            expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('code', 'CAPTCHA_VERIFICATION_FAILED');
-        });
-
-        it('should return 400 when the email is invalid', async () => {
-            mockTurnstile(true);
-            const res = await request(app)
-                .post('/submissions')
-                .send({ ...validBody, submitter_email: 'not-an-email' });
-            expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('code', 'A_VALID_EMAIL_REQUIRED');
+            expect(res.statusCode).toBe(401);
+            expect(res.body).toHaveProperty('code', 'UNAUTHENTICATED');
         });
 
         it('should return 400 when the name is missing', async () => {
-            mockTurnstile(true);
             const res = await request(app)
                 .post('/submissions')
+                .set('Authorization', `Bearer ${makeToken(20)}`)
                 .send({ ...validBody, name: '' });
             expect(res.statusCode).toBe(400);
         });
 
-        it('should accept a valid submission then rate-limit the next one', async () => {
-            mockTurnstile(true);
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 42 }], rowCount: 1 });
+        it('should accept valid submissions then rate-limit the account', async () => {
+            const token = makeToken(21);
+            for (let i = 0; i < 10; i++) {
+                pool.query.mockResolvedValueOnce({ rows: [{ id: 42 }], rowCount: 1 });
+                const ok = await request(app)
+                    .post('/submissions')
+                    .set('Authorization', `Bearer ${token}`)
+                    .send(validBody);
+                expect(ok.statusCode).toBe(201);
+                expect(ok.body).toMatchObject({ id: 42, status: 'pending' });
+            }
 
-            const first = await request(app).post('/submissions').send(validBody);
-            expect(first.statusCode).toBe(201);
-            expect(first.body).toMatchObject({ id: 42, status: 'pending' });
+            const limited = await request(app)
+                .post('/submissions')
+                .set('Authorization', `Bearer ${token}`)
+                .send(validBody);
+            expect(limited.statusCode).toBe(429);
+            expect(limited.headers).toHaveProperty('retry-after');
 
-            // Second request from the same IP within 10 minutes is rejected.
-            const second = await request(app).post('/submissions').send(validBody);
-            expect(second.statusCode).toBe(429);
-            expect(second.headers).toHaveProperty('retry-after');
+            // Another account is unaffected.
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 43 }], rowCount: 1 });
+            const other = await request(app)
+                .post('/submissions')
+                .set('Authorization', `Bearer ${makeToken(22)}`)
+                .send(validBody);
+            expect(other.statusCode).toBe(201);
         });
 
-        it('accepts a French-only name and stores its French content', async () => {
-            mockTurnstile(true);
+        it('stores French content and links the submission to the account', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ id: 43 }], rowCount: 1 });
 
             const res = await request(app)
                 .post('/submissions')
-                .set('X-Forwarded-For', '192.0.2.43')
+                .set('Authorization', `Bearer ${makeToken(23)}`)
                 .send({
                     name: '',
                     name_fr: 'Café arc-en-ciel',
                     description_fr: 'Un espace communautaire.',
-                    submitter_email: 'owner@example.com',
-                    captchaToken: 'dummy-token',
                     category_ids: [],
                 });
 
@@ -487,9 +490,48 @@ describe('Submissions', () => {
                 null,
                 null,
                 null,
-                'owner@example.com',
+                'user23@example.com',
                 [],
+                23,
             ]);
+        });
+    });
+
+    describe('Submitter endpoints', () => {
+        it('PUT /submissions/:id only matches the submitter\'s own pending row', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 5, name: 'Mine' }], rowCount: 1 });
+            const res = await request(app)
+                .put('/submissions/5')
+                .set('Authorization', `Bearer ${makeToken(24)}`)
+                .send({ name: 'Mine', submitter_email: 'ignored@example.com' });
+            expect(res.statusCode).toBe(200);
+            const [sql, params] = pool.query.mock.calls[0];
+            expect(sql).toContain('AND user_id = $13');
+            // Only admins can change the contact email.
+            expect(params[9]).toBeNull();
+            expect(params[12]).toBe(24);
+        });
+
+        it('DELETE /submissions/:id withdraws the submitter\'s own pending row', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 5 }], rowCount: 1 });
+            const res = await request(app)
+                .delete('/submissions/5')
+                .set('Authorization', `Bearer ${makeToken(24)}`);
+            expect(res.statusCode).toBe(200);
+            expect(pool.query.mock.calls[0][1]).toEqual([5, 24]);
+        });
+
+        it('approve and reject are admin only', async () => {
+            const approve = await request(app)
+                .post('/submissions/1/approve')
+                .set('Authorization', `Bearer ${makeToken(24)}`);
+            expect(approve.statusCode).toBe(403);
+            expect(approve.body).toHaveProperty('code', 'ADMIN_REQUIRED');
+
+            const list = await request(app)
+                .get('/submissions')
+                .set('Authorization', `Bearer ${makeToken(24)}`);
+            expect(list.statusCode).toBe(403);
         });
     });
 
@@ -572,5 +614,127 @@ describe('Submissions', () => {
                 .send({ name: 'Edited Cafe', submitter_email: 'a@b.co' });
             expect(res.statusCode).toBe(404);
         });
+    });
+});
+
+describe('Ownership', () => {
+    it('POST /locations is admin only', async () => {
+        const res = await request(app)
+            .post('/locations')
+            .set('Authorization', `Bearer ${makeToken(30)}`)
+            .send({ name: 'New Place', category_ids: [] });
+        expect(res.statusCode).toBe(403);
+    });
+
+    it('PUT /locations/:id restricts non-admins to their own locations', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+        const res = await request(app)
+            .put('/locations/1')
+            .set('Authorization', `Bearer ${makeToken(30)}`)
+            .send({ name: 'Not mine', category_ids: [] });
+        expect(res.statusCode).toBe(404);
+        const [sql, params] = pool.query.mock.calls[0];
+        expect(sql).toContain('AND owner_id = $11');
+        expect(params[10]).toBe(30);
+    });
+
+    it('PUT /locations/:id lets admins edit any location', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
+        await request(app)
+            .put('/locations/1')
+            .set('Authorization', `Bearer ${makeToken()}`)
+            .send({ name: 'Any', category_ids: [] });
+        expect(pool.query.mock.calls[0][0]).not.toContain('owner_id');
+    });
+
+    it('POST /events records the creating user as owner', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [{ id: 7 }], rowCount: 1 });
+        const res = await request(app)
+            .post('/events')
+            .set('Authorization', `Bearer ${makeToken(31)}`)
+            .send({ title: 'Picnic', event_date: '2030-06-20' });
+        expect(res.statusCode).toBe(201);
+        expect(pool.query.mock.calls[0][1].at(-1)).toBe(31);
+    });
+
+    it('POST /events rejects linking to a business the user does not own', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+        const res = await request(app)
+            .post('/events')
+            .set('Authorization', `Bearer ${makeToken(31)}`)
+            .send({ title: 'Picnic', event_date: '2030-06-20', location_id: 2 });
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toHaveProperty('code', 'LINKED_LOCATION_NOT_FOUND');
+    });
+
+    it('GET /events/all is admin only', async () => {
+        const res = await request(app)
+            .get('/events/all')
+            .set('Authorization', `Bearer ${makeToken(31)}`);
+        expect(res.statusCode).toBe(403);
+    });
+});
+
+describe('Accounts', () => {
+    it('rejects tokens from before accounts existed', async () => {
+        const legacy = jwt.sign({ username: 'old-admin' }, TEST_JWT_SECRET, { expiresIn: '1h' });
+        const res = await request(app).get('/auth/me').set('Authorization', `Bearer ${legacy}`);
+        expect(res.statusCode).toBe(401);
+    });
+
+    it('GET /auth/me returns the signed-in account', async () => {
+        const res = await request(app).get('/auth/me').set('Authorization', `Bearer ${makeToken(40)}`);
+        expect(res.statusCode).toBe(200);
+        expect(res.body.user).toMatchObject({ id: 40, username: 'user40', isAdmin: false });
+    });
+
+    it('POST /auth/register validates its input', async () => {
+        const badName = await request(app).post('/auth/register')
+            .set('X-Forwarded-For', '198.51.100.1')
+            .send({ username: 'x', email: 'a@b.co', password: 'longenough' });
+        expect(badName.body).toHaveProperty('code', 'INVALID_USERNAME');
+
+        const shortPw = await request(app).post('/auth/register')
+            .set('X-Forwarded-For', '198.51.100.1')
+            .send({ username: 'alex', email: 'a@b.co', password: 'short' });
+        expect(shortPw.body).toHaveProperty('code', 'PASSWORD_TOO_SHORT');
+
+        const badEmail = await request(app).post('/auth/register')
+            .set('X-Forwarded-For', '198.51.100.1')
+            .send({ username: 'alex', email: 'nope', password: 'longenough' });
+        expect(badEmail.body).toHaveProperty('code', 'A_VALID_EMAIL_REQUIRED');
+    });
+
+    it('POST /auth/register rejects a taken username regardless of case', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+        const res = await request(app).post('/auth/register')
+            .set('X-Forwarded-For', '198.51.100.2')
+            .send({ username: 'Admin', email: 'a@b.co', password: 'longenough' });
+        expect(res.statusCode).toBe(409);
+        expect(res.body).toHaveProperty('code', 'USERNAME_TAKEN');
+    });
+
+    it('POST /auth/password-requests answers the same for unknown usernames', async () => {
+        pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+        const res = await request(app).post('/auth/password-requests')
+            .set('X-Forwarded-For', '198.51.100.3')
+            .send({ username: 'nobody', new_password: 'longenough' });
+        expect(res.statusCode).toBe(202);
+        expect(pool.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('the /users dashboard endpoints are admin only', async () => {
+        const res = await request(app).get('/users').set('Authorization', `Bearer ${makeToken(41)}`);
+        expect(res.statusCode).toBe(403);
+        const anon = await request(app).get('/users/password-requests');
+        expect(anon.statusCode).toBe(401);
+    });
+
+    it('admins cannot delete their own account', async () => {
+        const res = await request(app)
+            .delete(`/users/${ADMIN_ID}`)
+            .set('Authorization', `Bearer ${makeToken()}`);
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toHaveProperty('code', 'CANNOT_DELETE_SELF');
     });
 });

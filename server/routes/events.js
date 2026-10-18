@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAdmin, ownershipFilter } = require('../middleware/auth');
 const { handleImageUpload } = require('../middleware/upload');
 
 function emptyToNull(value) {
@@ -62,25 +62,43 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /events/all — admin only. Every event, most recent first, for
-// management. Includes the raw (unresolved) image_url plus the linked
-// business's name/image so the admin UI can show what it would fall back to.
-router.get('/all', requireAuth, async (req, res) => {
+// Every event for management, most recent first, optionally narrowed by a
+// WHERE clause. Includes the raw (unresolved) image_url plus the linked
+// business's name/image so the dashboard can show what it would fall back to.
+function selectManagedEvents(where = '', params = []) {
+  return pool.query(
+    `SELECT
+       e.id, e.title, e.title_fr, e.description, e.description_fr, e.event_date, e.event_time,
+       e.location, e.location_id, e.city, e.url, e.image_url, e.created_at,
+       (e.image_data IS NOT NULL) AS has_image,
+       l.name AS location_name, l.image_url AS location_image_url,
+       (l.image_data IS NOT NULL) AS location_has_image
+     FROM events e
+     LEFT JOIN locations l ON l.id = e.location_id
+     ${where}
+     ORDER BY e.event_date DESC, e.event_time DESC NULLS LAST`,
+    params
+  );
+}
+
+// GET /events/all — admin only. Every event, including past ones.
+router.get('/all', requireAdmin, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT
-         e.id, e.title, e.title_fr, e.description, e.description_fr, e.event_date, e.event_time,
-         e.location, e.location_id, e.city, e.url, e.image_url, e.created_at,
-         (e.image_data IS NOT NULL) AS has_image,
-         l.name AS location_name, l.image_url AS location_image_url,
-         (l.image_data IS NOT NULL) AS location_has_image
-       FROM events e
-       LEFT JOIN locations l ON l.id = e.location_id
-       ORDER BY e.event_date DESC, e.event_time DESC NULLS LAST`
-    );
+    const result = await selectManagedEvents();
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching all events:', error);
+    res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// GET /events/mine — the signed-in user's own events, including past ones.
+router.get('/mine', requireAuth, async (req, res) => {
+  try {
+    const result = await selectManagedEvents('WHERE e.owner_id = $1', [req.user.id]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching own events:', error);
     res.status(500).json({ code: 'INTERNAL_SERVER_ERROR' });
   }
 });
@@ -112,17 +130,33 @@ function validateEventBody(body) {
   return { value: { title: displayTitle, titleFr, description, descriptionFr, eventDate, eventTime, location, locationId, city, url, imageUrl } };
 }
 
-// POST /events — admin only.
+// Non-admins may only link an event to a business they own. Anything else is
+// reported exactly like a missing location, so ids of others' content leak nothing.
+async function canLinkLocation(user, locationId) {
+  if (locationId === null || user.isAdmin) return true;
+  const result = await pool.query(
+    'SELECT 1 FROM locations WHERE id = $1 AND owner_id = $2',
+    [locationId, user.id]
+  );
+  return result.rowCount > 0;
+}
+
+// POST /events — any signed-in user. Events created by an admin are
+// admin-managed (no owner); everyone else's belong to them.
 router.post('/', requireAuth, async (req, res) => {
   try {
     const { code, value } = validateEventBody(req.body);
     if (code) return res.status(400).json({ code });
+    if (!(await canLinkLocation(req.user, value.locationId))) {
+      return res.status(400).json({ code: 'LINKED_LOCATION_NOT_FOUND' });
+    }
 
+    const ownerId = req.user.isAdmin ? null : req.user.id;
     const result = await pool.query(
-      `INSERT INTO events (title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO events (title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, owner_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id, title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, created_at`,
-      [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl]
+      [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, ownerId]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -135,7 +169,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// PUT /events/:id — admin only.
+// PUT /events/:id — its owner or an admin.
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -145,15 +179,19 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     const { code, value } = validateEventBody(req.body);
     if (code) return res.status(400).json({ code });
+    if (!(await canLinkLocation(req.user, value.locationId))) {
+      return res.status(400).json({ code: 'LINKED_LOCATION_NOT_FOUND' });
+    }
 
+    const params = [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, id];
     const result = await pool.query(
       `UPDATE events
          SET title=$1, title_fr=$2, description=$3, description_fr=$4,
              event_date=$5, event_time=$6, location=$7, location_id=$8,
              city=$9, url=$10, image_url=$11
-       WHERE id=$12
+       WHERE id=$12${ownershipFilter(req.user, params)}
        RETURNING id, title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, created_at`,
-      [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, id]
+      params
     );
 
     if (result.rowCount === 0) {
@@ -170,7 +208,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// DELETE /events/:id — admin only.
+// DELETE /events/:id — its owner or an admin.
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -178,7 +216,11 @@ router.delete('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
-    const result = await pool.query('DELETE FROM events WHERE id = $1 RETURNING id', [id]);
+    const params = [id];
+    const result = await pool.query(
+      `DELETE FROM events WHERE id = $1${ownershipFilter(req.user, params)} RETURNING id`,
+      params
+    );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'EVENT_NOT_FOUND' });
     }
@@ -218,7 +260,7 @@ router.get('/:id/image', async (req, res) => {
   }
 });
 
-// POST /events/:id/image — admin only. Uploads (replacing) the image BLOB.
+// POST /events/:id/image — owner or admin. Uploads (replacing) the image BLOB.
 router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -226,9 +268,10 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
+    const params = [req.file.buffer, req.file.mimetype, id];
     const result = await pool.query(
-      'UPDATE events SET image_data = $1, image_mime_type = $2 WHERE id = $3 RETURNING id',
-      [req.file.buffer, req.file.mimetype, id]
+      `UPDATE events SET image_data = $1, image_mime_type = $2 WHERE id = $3${ownershipFilter(req.user, params)} RETURNING id`,
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'EVENT_NOT_FOUND' });
@@ -241,7 +284,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
   }
 });
 
-// DELETE /events/:id/image — admin only. Clears the uploaded BLOB.
+// DELETE /events/:id/image — owner or admin. Clears the uploaded BLOB.
 router.delete('/:id/image', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -249,9 +292,10 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_EVENT_ID' });
     }
 
+    const params = [id];
     const result = await pool.query(
-      'UPDATE events SET image_data = NULL, image_mime_type = NULL WHERE id = $1 RETURNING id',
-      [id]
+      `UPDATE events SET image_data = NULL, image_mime_type = NULL WHERE id = $1${ownershipFilter(req.user, params)} RETURNING id`,
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ code: 'EVENT_NOT_FOUND' });

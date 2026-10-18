@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# add-user.sh — Add or update an admin user for the Pride Map manage page.
+# add-user.sh — Add an admin account, or promote/reset an existing account.
 #
 # Usage:
-#   ./add-user.sh <username>
+#   ./add-user.sh <username> [email]
+#
+# Regular accounts sign up from the website; use this to bootstrap admins.
+# If the username already exists its password is replaced and it is made an
+# admin (its email is only changed when one is given).
 #
 # The script will prompt for a password (input is hidden).
 # Passwords are hashed with bcrypt (cost factor 12) before being stored;
@@ -27,12 +31,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_DIR="$SCRIPT_DIR/server"
 
 # ── Argument check ─────────────────────────────────────────────────────────────
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <username>" >&2
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "Usage: $0 <username> [email]" >&2
   exit 1
 fi
 
 USERNAME="$1"
+EMAIL="${2:-}"
 
 if [[ -z "$USERNAME" ]]; then
   echo "Error: username must not be empty." >&2
@@ -84,17 +89,17 @@ const client = new Client({
 });
 client.connect()
   .then(() => client.query(
-    \`INSERT INTO admin_users (username, password_hash)
-     VALUES (\\\$1, \\\$2)
+    \`INSERT INTO users (username, password_hash, email, is_admin)
+     VALUES (\\\$1, \\\$2, NULLIF(\\\$3, ''), TRUE)
      ON CONFLICT (username)
-     DO UPDATE SET password_hash = EXCLUDED.password_hash\`,
-    [process.argv[1], process.argv[2]]
+     DO UPDATE SET password_hash = EXCLUDED.password_hash,
+                   email = COALESCE(EXCLUDED.email, users.email),
+                   is_admin = TRUE,
+                   password_changed_at = NOW()\`,
+    [process.argv[1], process.argv[2], process.argv[3]]
   ))
   .then(() => { console.log('User saved.'); return client.end(); })
   .catch(e => { console.error(e.message); process.exit(1); });
-" "$USERNAME" "$HASH"
+" "$USERNAME" "$HASH" "$EMAIL"
 
-echo "✓ User '$USERNAME' saved successfully."
-
-
-echo "✓ User '$USERNAME' saved successfully."
+echo "✓ Admin '$USERNAME' saved successfully."

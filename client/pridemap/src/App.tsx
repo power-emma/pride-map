@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MapComponent from './MapComponent';
@@ -11,12 +11,7 @@ import EventsCard from './components/EventsCard';
 import CreateLocationPage from './CreateLocationPage.tsx';
 import ManageLocationsPage from './ManageLocationsPage.tsx';
 import LoginPage from './LoginPage.tsx';
-
-const TOKEN_KEY = 'pride_map_token';
-
-function getStoredToken(): string | null {
-	return sessionStorage.getItem(TOKEN_KEY);
-}
+import { clearStoredSession, getStoredSession, storeSession, type AuthUser, type StoredSession } from './auth';
 
 function App() {
 	const { t } = useTranslation();
@@ -24,7 +19,9 @@ function App() {
 	const [selectedDetails, setSelectedDetails] = useState<LocationSidebarItem | null>(null);
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState('');
-	const [authToken, setAuthToken] = useState<string | null>(getStoredToken);
+	const [session, setSession] = useState<StoredSession | null>(getStoredSession);
+	const authToken = session?.token ?? null;
+	const authUser = session?.user ?? null;
 	const [servicesOpen, setServicesOpen] = useState(false);
 
 	const handleLocationSelect = (lat: number, lng: number, name: string, details?: Partial<LocationSidebarItem>) => {
@@ -42,15 +39,39 @@ function App() {
 		setServicesOpen(false);
 	};
 
-	function handleLogin(token: string) {
-		sessionStorage.setItem(TOKEN_KEY, token);
-		setAuthToken(token);
+	function handleLogin(token: string, user: AuthUser) {
+		const next = { token, user };
+		storeSession(next);
+		setSession(next);
 	}
 
-	function handleLogout() {
-		sessionStorage.removeItem(TOKEN_KEY);
-		setAuthToken(null);
-	}
+	// Stable so the dashboard's data-loading effects don't re-run every render.
+	const handleLogout = useCallback(() => {
+		clearStoredSession();
+		setSession(null);
+	}, []);
+
+	// Re-check a restored session: the account may have been deleted, had its
+	// password changed, or gained/lost admin rights since the token was issued.
+	useEffect(() => {
+		if (!authToken) return;
+		let cancelled = false;
+		fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${authToken}` } })
+			.then(async (res) => {
+				if (cancelled) return;
+				if (res.status === 401) { handleLogout(); return; }
+				if (!res.ok) return;
+				const json = await res.json();
+				if (cancelled) return;
+				const next = { token: authToken, user: json.user as AuthUser };
+				storeSession(next);
+				setSession(prev => (prev?.token === authToken && JSON.stringify(prev.user) === JSON.stringify(next.user) ? prev : next));
+			})
+			.catch((err) => console.error('Could not verify the saved session:', err));
+		return () => { cancelled = true; };
+	}, [authToken, handleLogout]);
+
+	const header = <Header authToken={authToken} isAdmin={authUser?.isAdmin ?? false} onLogout={handleLogout} />;
 
 	return (
 		<>
@@ -59,7 +80,7 @@ function App() {
 					path="/"
 					element={
 						<div className="map-page">
-							<Header authToken={authToken} onLogout={handleLogout}>
+							<Header authToken={authToken} isAdmin={authUser?.isAdmin ?? false} onLogout={handleLogout}>
 								<div className="header-search-row">
 									<SearchBar
 										query={searchQuery}
@@ -120,8 +141,10 @@ function App() {
 					path="/create-location"
 					element={
 						<>
-							<Header authToken={authToken} onLogout={handleLogout} />
-							<CreateLocationPage />
+							{header}
+							{authToken
+								? <CreateLocationPage authToken={authToken} onAuthError={handleLogout} />
+								: <LoginPage onLogin={handleLogin} intro={t('login.submitIntro')} />}
 						</>
 					}
 				/>
@@ -129,9 +152,10 @@ function App() {
 					path="/manage-locations"
 					element={
 						<>
-							<Header authToken={authToken} onLogout={handleLogout} />
-							{authToken
-								? <ManageLocationsPage authToken={authToken} onAuthError={handleLogout} />
+							{header}
+							{authToken && authUser
+								// Keyed by account so switching users never shows stale data.
+								? <ManageLocationsPage key={authUser.id} authToken={authToken} user={authUser} onAuthError={handleLogout} />
 								: <LoginPage onLogin={handleLogin} />}
 						</>
 					}
@@ -141,7 +165,7 @@ function App() {
 					element={
 						authToken
 							? <Navigate to="/manage-locations" replace />
-							: <><Header authToken={authToken} onLogout={handleLogout} /><LoginPage onLogin={handleLogin} /></>
+							: <>{header}<LoginPage onLogin={handleLogin} /></>
 					}
 				/>
 			</Routes>

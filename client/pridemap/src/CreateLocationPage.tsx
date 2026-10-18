@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
-import TurnstileWidget from './components/TurnstileWidget';
 import i18nInstance from './i18n';
 import { localizedApiError } from './localizedApiError';
 
@@ -20,11 +19,14 @@ function toNullableNumber(value: string) {
   return Number.isFinite(num) ? num : NaN;
 }
 
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+interface CreateLocationPageProps {
+  /** JWT token of the signed-in submitter. */
+  authToken: string;
+  /** Called when the server returns 401, so App can clear the token. */
+  onAuthError: () => void;
 }
 
-export default function CreateLocationPage() {
+export default function CreateLocationPage({ authToken, onAuthError }: CreateLocationPageProps) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -33,7 +35,6 @@ export default function CreateLocationPage() {
 
   const [name, setName] = useState('');
   const [nameFr, setNameFr] = useState('');
-  const [email, setEmail] = useState('');
   const [description, setDescription] = useState('');
   const [descriptionFr, setDescriptionFr] = useState('');
   const [address, setAddress] = useState('');
@@ -42,9 +43,6 @@ export default function CreateLocationPage() {
   const [url, setUrl] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
-
-  const [captchaToken, setCaptchaToken] = useState('');
-  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -86,11 +84,9 @@ export default function CreateLocationPage() {
   const canSubmit = useMemo(() => {
     return (
       (name.trim().length > 0 || nameFr.trim().length > 0) &&
-      isValidEmail(email) &&
-      captchaToken.length > 0 &&
       !submitting
     );
-  }, [name, nameFr, email, captchaToken, submitting]);
+  }, [name, nameFr, submitting]);
 
   async function handleGeocode() {
     const query = address.trim();
@@ -151,15 +147,6 @@ export default function CreateLocationPage() {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    if (!isValidEmail(email)) {
-      setSubmitError(t('create.validEmail'));
-      return;
-    }
-    if (!captchaToken) {
-      setSubmitError(t('create.completeCaptcha'));
-      return;
-    }
-
     const lat = toNullableNumber(latitude);
     const lng = toNullableNumber(longitude);
     if (Number.isNaN(lat) || Number.isNaN(lng)) {
@@ -170,7 +157,6 @@ export default function CreateLocationPage() {
     const payload = {
       name: name.trim(),
       name_fr: toNullIfEmpty(nameFr),
-      submitter_email: email.trim(),
       description: toNullIfEmpty(description),
       description_fr: toNullIfEmpty(descriptionFr),
       address: toNullIfEmpty(address),
@@ -179,33 +165,32 @@ export default function CreateLocationPage() {
       url: toNullIfEmpty(url),
       image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
-      captchaToken,
     };
 
     setSubmitting(true);
     try {
       const res = await fetch('/api/submissions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
         body: JSON.stringify(payload),
       });
 
       const json: unknown = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
       if (!res.ok) {
         const errorCode = json !== null && typeof json === 'object' && 'code' in json
           ? json.code
           : null;
         setSubmitError(localizedApiError(errorCode, res.status));
-        // Token is single-use; force the user to solve a fresh challenge.
-        setCaptchaToken('');
-        setCaptchaResetSignal((n) => n + 1);
         return;
       }
 
       setSubmitSuccess(t('create.submissionThanks'));
       setName('');
       setNameFr('');
-      setEmail('');
       setDescription('');
       setDescriptionFr('');
       setAddress('');
@@ -214,18 +199,11 @@ export default function CreateLocationPage() {
       setUrl('');
       setImageUrl('');
       setCategoryIds([]);
-      setCaptchaToken('');
-      setCaptchaResetSignal((n) => n + 1);
       setGeocodeResults([]);
       setGeocodeError(null);
-      
-      // Small UX: return home after a brief beat
-      setTimeout(() => navigate('/'), 400);
     } catch (err) {
       console.error('Failed to submit business:', err);
       setSubmitError(t('errors.network'));
-      setCaptchaToken('');
-      setCaptchaResetSignal((n) => n + 1);
     } finally {
       setSubmitting(false);
     }
@@ -258,8 +236,15 @@ export default function CreateLocationPage() {
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem' }}>
             <button
               type="button"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/manage-locations')}
               style={{ padding: '0.65rem 1.1rem', borderRadius: 10, border: '1px solid #444', fontWeight: 700, cursor: 'pointer' }}
+            >
+              {t('create.toDashboard')}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              style={{ padding: '0.65rem 1.1rem', borderRadius: 10, border: '1px solid #444', fontWeight: 600, cursor: 'pointer' }}
             >
               {t('create.backToMap')}
             </button>
@@ -316,21 +301,6 @@ export default function CreateLocationPage() {
             placeholder={t('create.namePlaceholder')}
             style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
           />
-        </label>
-
-        <label style={{ display: 'grid', gap: '0.35rem' }}>
-          <span style={{ fontWeight: 600 }}>{t('create.email')}</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder={t('create.emailPlaceholder')}
-            style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
-          />
-          <span style={{ fontSize: 13, opacity: 0.7 }}>
-            {t('create.emailHelp')}
-          </span>
         </label>
 
         <div style={{ display: 'grid', gap: '0.35rem' }}>
@@ -483,11 +453,6 @@ export default function CreateLocationPage() {
             {t('create.imageHelp')}
           </span>
         </label>
-
-        <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <span style={{ fontWeight: 600 }}>{t('create.verifyHuman')}</span>
-          <TurnstileWidget onToken={setCaptchaToken} resetSignal={captchaResetSignal} />
-        </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.25rem' }}>
           <button

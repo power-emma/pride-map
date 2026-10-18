@@ -30,34 +30,38 @@ Client:
 Database:
 - Postgres - Work in Progress
   
-## Public Business Submissions
+## Accounts and Submissions
 
-Anyone can suggest a business/service from the **Submit a Business** page
-(`/create-location`). Submissions are CAPTCHA-protected (Cloudflare Turnstile),
-rate limited to one per IP every 10 minutes, and land in a pending queue. Admins
-approve or reject them under **Manage Locations → Pending Submissions**; an
-approval copies the entry into the live `locations` table.
+Uploading anything requires an account. Anyone can sign up from the sign-in
+page (username, email, password); registration is rate limited per IP.
 
-### Turnstile (CAPTCHA) setup
-Create a Turnstile widget at
-<https://dash.cloudflare.com/?to=/:account/turnstile> to get a **site key**
-(public) and a **secret key** (private), then:
+- **Locations:** signed-in users suggest a business from **Submit a Business**
+  (`/create-location`). Submissions land in a pending queue (rate limited per
+  account); admins approve or reject them from the dashboard. An approved
+  submission becomes a live location owned by the submitter, who can then edit
+  or delete it from **My locations & events**.
+- **Events:** signed-in users create and manage their own events directly, and
+  can link them only to locations they own.
+- **Passwords:** password changes (including "forgot password") are requests
+  that an admin must approve. Approving one signs that account out everywhere.
+- **Admins** see and manage all content, plus a **Users** tab to view
+  accounts, delete them (optionally with their locations and events), and
+  approve or deny password change requests. Create admins with
+  `./add-user.sh <username> [email]`.
 
-- **Server:** export `TURNSTILE_SECRET_KEY=<secret>` before starting the Node
-  server (e.g. in `run-server.sh` / your process manager).
-- **Client:** set `VITE_TURNSTILE_SITE_KEY=<site key>` at build time (e.g. a
-  `.env` file in `client/pridemap/`).
+## Updating an existing server
 
-If either is unset, the app falls back to Cloudflare's "always passes" **test
-keys** so local dev works without configuration — do **not** ship the test keys
-to production, as they provide no bot protection.
-
-### Database migration
-Existing databases need the new `submissions` table:
+After pulling new code, run:
 
 ```
-psql -U pridemap -d pridemap -f server/add-submissions-table.sql
+./update.sh --check    # optional dry run: applies the migrations, then rolls back
+./update.sh            # back up, migrate, install dependencies, build the client
+./update.sh --restart  # same, then restart onto the new code via run-servers.sh
 ```
+
+It takes a `pg_dump` backup to `backups/pre-update_<timestamp>.dump` first,
+applies every migration in one transaction, and checks that no rows were lost.
+To undo the database change: `./update.sh --rollback backups/pre-update_<timestamp>.dump`.
 
 To bring an existing database up to date for French content, event links, and
 image uploads, run the migrations in this order:

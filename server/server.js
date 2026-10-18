@@ -3,8 +3,8 @@ const app = express();
 const cors = require('cors');
 const requestLogger = require('./middleware/requestLogger');
 // Behind the nginx reverse proxy, the client IP arrives in X-Forwarded-For.
-// Trusting the proxy makes req.ip reflect the real client, which the public
-// submission rate limiter relies on.
+// Trusting the proxy makes req.ip reflect the real client, which the
+// registration and password-request rate limiters rely on.
 app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
@@ -31,6 +31,7 @@ const locationsRoute = require('./routes/locations');
 const authRoute = require('./routes/auth');
 const submissionsRoute = require('./routes/submissions');
 const eventsRoute = require('./routes/events');
+const usersRoute = require('./routes/users');
 
 app.use('/pins', pinsRoute);
 app.use('/cards', cardsRoute);
@@ -39,6 +40,7 @@ app.use('/auth', authRoute);
 app.use('/locations', locationsRoute);
 app.use('/submissions', submissionsRoute);
 app.use('/events', eventsRoute);
+app.use('/users', usersRoute);
 
 // Catch-all Express error handler — fires when a route calls next(err) or
 // when an async route throws without a try/catch. Returns JSON 500 instead

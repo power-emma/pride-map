@@ -43,6 +43,7 @@ import LocationSidebar from '../components/LocationSidebar';
 import ImageUploadControl from '../components/ImageUploadControl';
 import App from '../App';
 import CreateLocationPage from '../CreateLocationPage';
+import LoginPage from '../LoginPage';
 import i18n from '../i18n';
 import { localizedApiError } from '../localizedApiError';
 
@@ -78,7 +79,7 @@ describe('CreateLocationPage', () => {
         const user = userEvent.setup();
         render(
             <MemoryRouter>
-                <CreateLocationPage />
+                <CreateLocationPage authToken="tok" onAuthError={() => {}} />
             </MemoryRouter>
         );
 
@@ -93,6 +94,89 @@ describe('CreateLocationPage', () => {
             expect(screen.getByPlaceholderText('e.g. 45.421')).toHaveValue('45.421');
             expect(screen.getByPlaceholderText('e.g. -75.690')).toHaveValue('-75.690');
         });
+    });
+
+    it('submits with the account token and no CAPTCHA or email field', async () => {
+        const user = userEvent.setup();
+        render(
+            <MemoryRouter>
+                <CreateLocationPage authToken="tok" onAuthError={() => {}} />
+            </MemoryRouter>
+        );
+
+        expect(screen.queryByText(/human/i)).not.toBeInTheDocument();
+        expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument();
+
+        await user.type(screen.getAllByPlaceholderText('Business name')[0], 'Rainbow Cafe');
+        await user.click(screen.getByRole('button', { name: /submit business/i }));
+
+        await screen.findByText(/pending admin approval/i);
+        const fetchMock = vi.mocked(fetch);
+        const [, init] = fetchMock.mock.calls.find(([url]) => String(url) === '/api/submissions')!;
+        expect((init!.headers as Record<string, string>)['Authorization']).toBe('Bearer tok');
+        expect(JSON.parse(String(init!.body))).not.toHaveProperty('captchaToken');
+    });
+});
+
+// ─── LoginPage ───────────────────────────────────────────────────────────────
+describe('LoginPage', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('creates an account and signs in with the returned token', async () => {
+        const account = { id: 7, username: 'alex', email: 'alex@example.com', isAdmin: false };
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            status: 201,
+            json: async () => ({ token: 'new-token', user: account }),
+        }) as Response));
+        const onLogin = vi.fn();
+        const user = userEvent.setup();
+        render(<LoginPage onLogin={onLogin} />);
+
+        await user.click(screen.getByRole('button', { name: /create an account/i }));
+        await user.type(screen.getByLabelText(/username/i), 'alex');
+        await user.type(screen.getByLabelText(/email/i), 'alex@example.com');
+        await user.type(screen.getByLabelText(/^password$/i), 'longenough');
+        await user.type(screen.getByLabelText(/confirm password/i), 'longenough');
+        await user.click(screen.getByRole('button', { name: /^create account$/i }));
+
+        await waitFor(() => expect(onLogin).toHaveBeenCalledWith('new-token', account));
+        expect(vi.mocked(fetch).mock.calls[0][0]).toBe('/api/auth/register');
+    });
+
+    it('refuses to register when the passwords differ', async () => {
+        vi.stubGlobal('fetch', vi.fn());
+        const user = userEvent.setup();
+        render(<LoginPage onLogin={() => {}} />);
+
+        await user.click(screen.getByRole('button', { name: /create an account/i }));
+        await user.type(screen.getByLabelText(/username/i), 'alex');
+        await user.type(screen.getByLabelText(/email/i), 'alex@example.com');
+        await user.type(screen.getByLabelText(/^password$/i), 'longenough');
+        await user.type(screen.getByLabelText(/confirm password/i), 'different1');
+        await user.click(screen.getByRole('button', { name: /^create account$/i }));
+
+        expect(await screen.findByText(/passwords don't match/i)).toBeInTheDocument();
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('files a password change request for admin approval', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 202, json: async () => ({ status: 'pending' }) }) as Response));
+        const user = userEvent.setup();
+        render(<LoginPage onLogin={() => {}} />);
+
+        await user.click(screen.getByRole('button', { name: /forgot password/i }));
+        await user.type(screen.getByLabelText(/username/i), 'alex');
+        await user.type(screen.getByLabelText(/new password/i), 'longenough');
+        await user.type(screen.getByLabelText(/confirm password/i), 'longenough');
+        await user.click(screen.getByRole('button', { name: /request password change/i }));
+
+        expect(await screen.findByText(/once an administrator approves it/i)).toBeInTheDocument();
+        const [url, init] = vi.mocked(fetch).mock.calls[0];
+        expect(url).toBe('/api/auth/password-requests');
+        expect(JSON.parse(String(init!.body))).toEqual({ username: 'alex', new_password: 'longenough' });
     });
 });
 
@@ -110,26 +194,33 @@ describe('Header', () => {
 
     it('hides the nav links until the hamburger menu is opened', () => {
         render(<MemoryRouter><Header /></MemoryRouter>);
-        expect(screen.queryByRole('link', { name: /manage locations/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument();
     });
 
-    it('shows "Sign in" (not Manage Locations) when logged out', async () => {
+    it('shows "Sign in" (not the dashboard) when logged out', async () => {
         const user = userEvent.setup();
         render(<MemoryRouter><Header /></MemoryRouter>);
         await user.click(screen.getByRole('button', { name: /menu/i }));
         expect(screen.getByRole('link', { name: /sign in/i })).toBeInTheDocument();
-        expect(screen.queryByRole('link', { name: /manage locations/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /dashboard|my locations/i })).not.toBeInTheDocument();
         expect(screen.getByRole('link', { name: /submit a business/i })).toBeInTheDocument();
     });
 
-    it('shows "Manage Locations" and "Sign out" when logged in', async () => {
+    it('shows the user\'s dashboard and "Sign out" when logged in', async () => {
         const user = userEvent.setup();
         render(<MemoryRouter><Header authToken="tok" onLogout={() => {}} /></MemoryRouter>);
         await user.click(screen.getByRole('button', { name: /menu/i }));
-        expect(screen.getByRole('link', { name: /manage locations/i })).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /my locations & events/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
         expect(screen.queryByRole('link', { name: /sign in/i })).not.toBeInTheDocument();
+    });
+
+    it('labels the dashboard link for admins', async () => {
+        const user = userEvent.setup();
+        render(<MemoryRouter><Header authToken="tok" isAdmin onLogout={() => {}} /></MemoryRouter>);
+        await user.click(screen.getByRole('button', { name: /menu/i }));
+        expect(screen.getByRole('link', { name: /admin dashboard/i })).toBeInTheDocument();
     });
 
     it('changes the interface language and updates the document language', async () => {
@@ -452,5 +543,12 @@ describe('App', () => {
     it('renders the off-map services section title', async () => {
         render(<MemoryRouter><App /></MemoryRouter>);
         expect(screen.getByText('Off-Map Services!')).toBeInTheDocument();
+    });
+
+    it('asks visitors to sign in before submitting a business', async () => {
+        sessionStorage.clear();
+        render(<MemoryRouter initialEntries={['/create-location']}><App /></MemoryRouter>);
+        expect(screen.getByText(/create a free account to submit a business/i)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /submit business/i })).not.toBeInTheDocument();
     });
 });

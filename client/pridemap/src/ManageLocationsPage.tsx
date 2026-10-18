@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import i18nInstance from './i18n';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
 import ImageUploadControl from './components/ImageUploadControl';
+import AdminUsersPanel from './components/AdminUsersPanel';
+import AccountPanel from './components/AccountPanel';
 import { CITY_NAME } from './config';
 import { localizedApiError } from './localizedApiError';
+import type { AuthUser } from './auth';
 
 type Category = { id: number; name: string };
 
@@ -55,15 +59,21 @@ type Submission = {
   url: string | null;
   image_url: string | null;
   has_image: boolean;
-  submitter_email: string;
+  submitter_email: string | null;
+  submitter_username?: string | null;
   category_ids: number[];
   status: string;
   created_at: string;
 };
 
 interface ManageLocationsPageProps {
-  /** JWT token to attach to mutating API requests. */
+  /** JWT token to attach to API requests. */
   authToken: string;
+  /**
+   * The signed-in account. Admins manage everything and review the queue;
+   * everyone else sees and manages only their own content.
+   */
+  user: AuthUser;
   /** Called when the server returns 401, so App can clear the token. */
   onAuthError: () => void;
 }
@@ -95,16 +105,25 @@ const labelStyle: React.CSSProperties = {
   gap: '0.3rem',
 };
 
-export default function ManageLocationsPage({ authToken, onAuthError }: ManageLocationsPageProps) {
+function submissionStatusColour(status: string) {
+  if (status === 'approved') return '#4caf50';
+  if (status === 'rejected') return '#ff5a5a';
+  return '#e0b84c';
+}
+
+export default function ManageLocationsPage({ authToken, user, onAuthError }: ManageLocationsPageProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const isAdmin = user.isAdmin;
   const [locations, setLocations] = useState<Location[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Top-level view: edit the live map ('locations'), review the pending queue,
-  // or manage the "Happening in <city>" events cards.
-  const [view, setView] = useState<'locations' | 'submissions' | 'events'>('locations');
+  // Top-level view: edit live locations, the submissions queue (admins review
+  // it; users follow their own), the "Happening in <city>" events cards,
+  // accounts (admins only), or the signed-in user's own account.
+  const [view, setView] = useState<'locations' | 'submissions' | 'events' | 'users' | 'account'>('locations');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [submissionsError, setSubmissionsError] = useState<string | null>(null);
   // Tracks which submission ids currently have an approve/reject request in flight.
@@ -170,25 +189,30 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/locations').then(r => r.json()),
-      fetch('/api/categories').then(r => r.json()),
+      fetch(isAdmin ? '/api/locations' : '/api/locations/mine', {
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      }),
+      fetch('/api/categories'),
     ])
-      .then(([locs, cats]) => {
-        setLocations(locs);
-        setCategories(cats);
+      .then(async ([locsRes, catsRes]) => {
+        if (locsRes.status === 401) { onAuthError(); return; }
+        if (!locsRes.ok) throw new Error(String(locsRes.status));
+        if (!catsRes.ok) throw new Error(String(catsRes.status));
+        setLocations(await locsRes.json());
+        setCategories(await catsRes.json());
       })
       .catch(err => {
         console.error('Failed to load admin location data:', err);
         setLoadError(i18nInstance.t('errors.network'));
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [authToken, isAdmin, onAuthError]);
 
-  // Load the pending submissions queue (admin-only endpoint).
+  // Admins load the pending review queue; everyone else their own submissions.
   useEffect(() => {
     let cancelled = false;
     setSubmissionsError(null);
-    fetch('/api/submissions?status=pending', {
+    fetch(isAdmin ? '/api/submissions?status=pending' : '/api/submissions/mine', {
       headers: { 'Authorization': `Bearer ${authToken}` },
     })
       .then(async (res) => {
@@ -206,13 +230,14 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         }
       });
     return () => { cancelled = true; };
-  }, [authToken, onAuthError]);
+  }, [authToken, isAdmin, onAuthError]);
 
-  // Load all events (admin-only endpoint; includes past events for management).
+  // Load events for management (including past ones): all of them for admins,
+  // otherwise just the user's own.
   useEffect(() => {
     let cancelled = false;
     setEventsError(null);
-    fetch('/api/events/all', {
+    fetch(isAdmin ? '/api/events/all' : '/api/events/mine', {
       headers: { 'Authorization': `Bearer ${authToken}` },
     })
       .then(async (res) => {
@@ -230,7 +255,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         }
       });
     return () => { cancelled = true; };
-  }, [authToken, onAuthError]);
+  }, [authToken, isAdmin, onAuthError]);
 
   const categoryNameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -305,13 +330,36 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     }
   }
 
+  async function handleWithdraw(sub: Submission) {
+    setBusySubmissionId(sub.id);
+    setSubmissionsError(null);
+    try {
+      const res = await fetch(`/api/submissions/${sub.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authToken}` },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.status === 401) { onAuthError(); return; }
+      if (!res.ok) {
+        setSubmissionsError(localizedApiError(json?.code, res.status));
+        return;
+      }
+      setSubmissions(prev => prev.filter(s => s.id !== sub.id));
+    } catch (err) {
+      console.error('Failed to withdraw submission:', err);
+      setSubmissionsError(t('errors.network'));
+    } finally {
+      setBusySubmissionId(null);
+    }
+  }
+
   function startEditSubmission(sub: Submission) {
     setSubmissionsError(null);
     setEditingSubmissionId(sub.id);
     setEditDraft({
       name: sub.name,
       nameFr: sub.name_fr ?? '',
-      email: sub.submitter_email,
+      email: sub.submitter_email ?? '',
       description: sub.description ?? '',
       descriptionFr: sub.description_fr ?? '',
       address: sub.address ?? '',
@@ -340,7 +388,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
     const payload = {
       name: editDraft.name.trim(),
       name_fr: toNullIfEmpty(editDraft.nameFr),
-      submitter_email: editDraft.email.trim(),
+      // Only admins can change the contact email; blank keeps the current one.
+      submitter_email: isAdmin ? toNullIfEmpty(editDraft.email) : null,
       description: toNullIfEmpty(editDraft.description),
       description_fr: toNullIfEmpty(editDraft.descriptionFr),
       address: toNullIfEmpty(editDraft.address),
@@ -469,6 +518,11 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   }
 
   function openCreate() {
+    // Only admins publish directly; everyone else goes through review.
+    if (!isAdmin) {
+      navigate('/create-location');
+      return;
+    }
     clearForm();
     setSelectedId(null);
     setMode('create');
@@ -789,6 +843,8 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   }
 
   const selectedEvent = events.find(ev => ev.id === selectedEventId) ?? null;
+
+  const pendingCount = submissions.filter(s => s.status === 'pending').length;
 
   const selectedLocation = locations.find(l => l.id === selectedId) ?? null;
 
@@ -1207,7 +1263,10 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
   const submissionsPanel = (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1.5rem' }}>
       <div style={{ maxWidth: 760, width: '100%', margin: '0 auto' }}>
-        <h2 style={{ margin: '0 0 1rem 0' }}>{t('admin.pendingSubmissions')}</h2>
+        <h2 style={{ margin: '0 0 1rem 0' }}>{isAdmin ? t('admin.pendingSubmissions') : t('admin.mySubmissions')}</h2>
+        {!isAdmin && (
+          <p style={{ margin: '0 0 1rem 0', opacity: 0.75, fontSize: 14 }}>{t('admin.mySubmissionsHelp')}</p>
+        )}
         {submissionsError && (
           <div style={{ padding: '0.75rem', border: '1px solid #ff5a5a', borderRadius: 8, marginBottom: '0.75rem', color: '#ff5a5a' }}>
             {submissionsError}
@@ -1215,7 +1274,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         )}
         {submissions.length === 0 ? (
           <div style={{ opacity: 0.6, marginTop: '2rem', textAlign: 'center' }}>
-            {t('admin.noPendingSubmissions')}
+            {isAdmin ? t('admin.noPendingSubmissions') : t('admin.noSubmissions')}
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '1rem' }}>
@@ -1226,11 +1285,17 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                 .filter((n): n is string => Boolean(n));
               const hasPin = sub.latitude != null && sub.longitude != null;
               const isEditing = editingSubmissionId === sub.id;
+              const isPending = sub.status === 'pending';
               return (
                 <div key={sub.id} style={{ border: '1px solid #333', borderRadius: 10, padding: '1rem', display: 'grid', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0 }}>{isEditing ? t('admin.editingSubmission') : sub.name}</h3>
                     <span style={{ fontSize: 12, opacity: 0.55 }}>
+                      {!isAdmin && (
+                        <span style={{ marginRight: '0.5rem', padding: '0.1rem 0.5rem', border: `1px solid ${submissionStatusColour(sub.status)}`, borderRadius: 999, color: submissionStatusColour(sub.status) }}>
+                          {t(`admin.status_${sub.status}`)}
+                        </span>
+                      )}
                       {new Date(sub.created_at).toLocaleString(i18n.language === 'fr' ? 'fr-CA' : 'en-CA')}
                     </span>
                   </div>
@@ -1245,10 +1310,12 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                         <span style={{ fontWeight: 600 }}>{t('admin.frenchName')}</span>
                         <input value={editDraft.nameFr} onChange={e => setEditDraft(d => ({ ...d, nameFr: e.target.value }))} style={inputStyle} />
                       </label>
-                      <label style={labelStyle}>
-                        <span style={{ fontWeight: 600 }}>{t('admin.submitterEmail')}</span>
-                        <input value={editDraft.email} onChange={e => setEditDraft(d => ({ ...d, email: e.target.value }))} style={inputStyle} />
-                      </label>
+                      {isAdmin && (
+                        <label style={labelStyle}>
+                          <span style={{ fontWeight: 600 }}>{t('admin.submitterEmail')}</span>
+                          <input value={editDraft.email} onChange={e => setEditDraft(d => ({ ...d, email: e.target.value }))} style={inputStyle} />
+                        </label>
+                      )}
                       <div style={labelStyle}>
                         <span style={{ fontWeight: 600 }}>{t('admin.categories')}</span>
                         <CategoryCheckboxes
@@ -1327,10 +1394,18 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                           style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }}
                         />
                       )}
-                      <div style={{ fontSize: 13 }}>
-                        <strong>{t('admin.submittedBy')}</strong>{' '}
-                        <a href={`mailto:${sub.submitter_email}`} style={{ color: 'inherit' }}>{sub.submitter_email}</a>
-                      </div>
+                      {isAdmin && (
+                        <div style={{ fontSize: 13 }}>
+                          <strong>{t('admin.submittedBy')}</strong>{' '}
+                          {sub.submitter_username ?? t('admin.deletedAccount')}
+                          {sub.submitter_email && (
+                            <>
+                              {' · '}
+                              <a href={`mailto:${sub.submitter_email}`} style={{ color: 'inherit' }}>{sub.submitter_email}</a>
+                            </>
+                          )}
+                        </div>
+                      )}
 
                       {catNames.length > 0 && (
                         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -1357,6 +1432,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                         </div>
                       )}
 
+                      {isAdmin ? (
                       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
                         <button
                           type="button"
@@ -1383,6 +1459,26 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
                           {busy ? t('admin.working') : t('admin.reject')}
                         </button>
                       </div>
+                      ) : isPending && (
+                      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => startEditSubmission(sub)}
+                          disabled={busy}
+                          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #555', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent', color: 'inherit' }}
+                        >
+                          {t('admin.edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleWithdraw(sub)}
+                          disabled={busy}
+                          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ff5a5a', color: '#ff5a5a', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', background: 'transparent' }}
+                        >
+                          {busy ? t('admin.working') : t('admin.withdraw')}
+                        </button>
+                      </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1396,19 +1492,36 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 72px)', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid #333' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid #333', flexWrap: 'wrap', alignItems: 'center' }}>
         <button type="button" onClick={() => setView('locations')} style={tabBtnStyle(view === 'locations')}>
-          {t('admin.tabsLocations')}
+          {isAdmin ? t('admin.tabsLocations') : t('admin.tabsMyLocations')}
         </button>
         <button type="button" onClick={() => setView('submissions')} style={tabBtnStyle(view === 'submissions')}>
-          {submissions.length > 0 ? t('admin.submissionPlural', { count: submissions.length }) : t('admin.tabsSubmissions')}
+          {isAdmin
+            ? (pendingCount > 0 ? t('admin.submissionPlural', { count: pendingCount }) : t('admin.tabsSubmissions'))
+            : (pendingCount > 0 ? t('admin.mySubmissionPlural', { count: pendingCount }) : t('admin.mySubmissions'))}
         </button>
         <button type="button" onClick={() => setView('events')} style={tabBtnStyle(view === 'events')}>
           {events.length > 0 ? t('admin.eventsPlural', { count: events.length }) : t('admin.tabsEvents')}
         </button>
+        {isAdmin && (
+          <button type="button" onClick={() => setView('users')} style={tabBtnStyle(view === 'users')}>
+            {t('admin.tabsUsers')}
+          </button>
+        )}
+        <button type="button" onClick={() => setView('account')} style={tabBtnStyle(view === 'account')}>
+          {t('admin.tabsAccount')}
+        </button>
+        <span style={{ marginLeft: 'auto', fontSize: 13, opacity: 0.6 }}>
+          {t(isAdmin ? 'admin.signedInAsAdmin' : 'admin.signedInAs', { username: user.username })}
+        </span>
       </div>
 
-      {view === 'submissions' ? submissionsPanel : view === 'events' ? eventsPanel : (
+      {view === 'submissions' ? submissionsPanel
+        : view === 'events' ? eventsPanel
+        : view === 'users' && isAdmin ? <AdminUsersPanel authToken={authToken} currentUserId={user.id} onAuthError={onAuthError} />
+        : view === 'account' ? <AccountPanel user={user} />
+        : (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
       {/* Sidebar */}
@@ -1427,7 +1540,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
               textAlign: 'left',
             }}
           >
-            {t('admin.addLocation')}
+            {isAdmin ? t('admin.addLocation') : t('admin.submitLocation')}
           </button>
           <input
             value={search}
@@ -1438,7 +1551,9 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {filteredLocations.length === 0 && (
-            <div style={{ padding: '1rem', opacity: 0.6 }}>{t('admin.noLocations')}</div>
+            <div style={{ padding: '1rem', opacity: 0.6 }}>
+              {isAdmin || locations.length > 0 ? t('admin.noLocations') : t('admin.noOwnLocations')}
+            </div>
           )}
           {filteredLocations.map(loc => (
             <button
@@ -1472,7 +1587,7 @@ export default function ManageLocationsPage({ authToken, onAuthError }: ManageLo
         <div style={{ maxWidth: 640, width: '100%', margin: '0 auto' }}>
         {mode === 'idle' && (
           <div style={{ opacity: 0.5, marginTop: '2rem', textAlign: 'center' }}>
-            {t('admin.selectLocation')} <strong>{t('admin.addLocation')}</strong>.
+            {t('admin.selectLocation')} <strong>{isAdmin ? t('admin.addLocation') : t('admin.submitLocation')}</strong>.
           </div>
         )}
 
