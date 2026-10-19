@@ -647,8 +647,16 @@
   animation: sidebar-slide-in 0.22s ease-out;
 }
 
+.events-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
 .events-card__title {
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -730,6 +738,29 @@
 
 .events-card__link:hover {
   text-decoration: underline;
+}
+
+/* Collapse toggle; only shown on mobile */
+.events-card__toggle {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px -6px 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.events-card__toggle:hover {
+  color: #c061cb;
 }
 
 /* Full event detail modal, opened by clicking a card */
@@ -823,20 +854,72 @@
     width: auto;
     max-height: none;
     border-radius: 16px;
-    padding: 12px 14px;
+    padding: 10px 12px;
+  }
+
+  .events-card__header {
+    margin-bottom: 8px;
+  }
+
+  .events-card__title {
+    font-size: 0.95rem;
+  }
+
+  .events-card__toggle {
+    display: inline-flex;
+  }
+
+  .events-card--collapsed .events-card__header {
+    margin-bottom: 0;
+  }
+
+  .events-card--collapsed .events-card__list {
+    display: none;
   }
 
   .events-card__list {
     flex-direction: row;
-    gap: 10px;
+    gap: 8px;
     overflow-x: auto;
     scroll-snap-type: x proximity;
     padding-bottom: 2px;
   }
 
   .events-card__item {
-    flex: 0 0 min(78vw, 280px);
+    flex: 0 0 min(70vw, 260px);
     scroll-snap-align: start;
+    padding: 8px 10px;
+  }
+
+  /* Keep the strip short: shorter banner image and a tighter actions row */
+  .events-card__image {
+    width: calc(100% + 20px);
+    margin: -8px -10px 6px;
+    height: 64px;
+  }
+
+  .events-card__actions {
+    margin-top: 4px;
+  }
+
+  .events-card__name {
+    font-size: 0.88rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .events-card__date {
+    margin-bottom: 2px;
+  }
+
+  .events-card__location {
+    margin-top: 2px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

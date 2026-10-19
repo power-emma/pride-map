@@ -43,6 +43,25 @@ const EventsCard = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
+  // Only has a visible effect on mobile, where the toggle button is shown.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('eventsCardCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      try {
+        localStorage.setItem('eventsCardCollapsed', prev ? '0' : '1');
+      } catch {
+        // Storage unavailable; the toggle still works for this session.
+      }
+      return !prev;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -75,9 +94,24 @@ const EventsCard = () => {
   });
 
   return (
-    <aside className="events-card" aria-label={t('events.upcoming', { city: CITY_NAME })}>
-      <h2 className="events-card__title">{t('events.happening', { city: CITY_NAME })}</h2>
-      <div className="events-card__list">
+    <aside
+      className={`events-card${collapsed ? ' events-card--collapsed' : ''}`}
+      aria-label={t('events.upcoming', { city: CITY_NAME })}
+    >
+      <div className="events-card__header">
+        <h2 className="events-card__title">{t('events.happening', { city: CITY_NAME })}</h2>
+        <button
+          type="button"
+          className="events-card__toggle"
+          aria-expanded={!collapsed}
+          aria-controls="events-card-list"
+          aria-label={collapsed ? t('events.expand') : t('events.collapse')}
+          onClick={toggleCollapsed}
+        >
+          <span aria-hidden="true">{collapsed ? '▴' : '▾'}</span>
+        </button>
+      </div>
+      <div className="events-card__list" id="events-card-list">
         {events.map(event => (
           <div key={event.id} className="events-card__item" onClick={() => setActiveEvent(event)}>
             {event.image_url && (

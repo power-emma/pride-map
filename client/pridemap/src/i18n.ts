@@ -102,6 +102,8 @@ const translations = {
         viewDetails: 'View details',
         learnMore: 'Learn more',
         close: 'Close',
+        collapse: 'Hide events',
+        expand: 'Show events',
       },
       create: {
         title: 'Submit a Business',
@@ -415,6 +417,8 @@ const translations = {
         viewDetails: 'Voir les détails',
         learnMore: 'En savoir plus',
         close: 'Fermer',
+        collapse: 'Masquer les événements',
+        expand: 'Afficher les événements',
       },
       create: {
         title: 'Proposer une entreprise',
