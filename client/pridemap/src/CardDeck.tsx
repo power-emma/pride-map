@@ -16,27 +16,29 @@ interface Card {
     categories: string[];
 }
 
-const CardDeck = ({title, onLocationSelect, categoryFilter, searchQuery = ''}: {
+const CardDeck = ({title, onLocationSelect, categoryFilter, searchQuery = '', regionId}: {
     title: string,
     onLocationSelect?: (lat: number, lng: number, name: string, details?: { nameFr?: string | null; description?: string | null; descriptionFr?: string | null; address?: string | null; url?: string | null; imageUrl?: string | null; categories?: string[] }) => void,
     categoryFilter?: string | null,
     searchQuery?: string,
+    regionId?: number | null,
 }) => {
     const { t, i18n } = useTranslation();
     const [cards, setCards] = useState<Card[]>([]);
 
     useEffect(() => {
-        fetch('/api/cards')
+        if (regionId == null) return;
+        fetch(`/api/cards?region_id=${regionId}`)
             .then(response => response.json())
             .then(json => {
                 setCards(json);
                 console.log('Loaded cards:', json);
             })
             .catch(error => console.error('Error loading cards:', error));
-    }, []);
+    }, [regionId]);
 
     const query = searchQuery.trim().toLowerCase();
-    const visibleCards = cards.filter(card => {
+    const visibleCards = (regionId == null ? [] : cards).filter(card => {
         const matchesCategory = !categoryFilter || card.categories.includes(categoryFilter);
         const matchesQuery = !query || card.name.toLowerCase().includes(query) || (card.name_fr ?? '').toLowerCase().includes(query);
         return matchesCategory && matchesQuery;

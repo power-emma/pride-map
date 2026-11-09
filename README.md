@@ -48,6 +48,10 @@ page (username, email, password); registration is rate limited per IP.
   accounts, delete them (optionally with their locations and events), and
   approve or deny password change requests. Create admins with
   `./add-user.sh <username> [email]`.
+- **Regions:** choose a region beside the home-page search bar to browse its
+  locations and events. Global admins create regions and manage regional
+  admins in **Manage Regions**; regional admins can manage content and other
+  admins only for their assigned regions.
 
 ## Updating an existing server
 
@@ -62,6 +66,9 @@ After pulling new code, run:
 It takes a `pg_dump` backup to `backups/pre-update_<timestamp>.dump` first,
 applies every migration in one transaction, and checks that no rows were lost.
 To undo the database change: `./update.sh --rollback backups/pre-update_<timestamp>.dump`.
+The migrations add Ottawa and Toronto regions and assign existing locations,
+events, and pending submissions to Ottawa, except the FrancoQueer and Human
+Rights Legal Support Centre locations, which are assigned to Toronto.
 
 To bring an existing database up to date for French content, event links, and
 image uploads, run the migrations in this order:
@@ -72,6 +79,7 @@ psql -U pridemap -d pridemap -f server/add-events-table.sql
 psql -U pridemap -d pridemap -f server/add-french-event-content.sql
 psql -U pridemap -d pridemap -f server/add-image-columns.sql
 psql -U pridemap -d pridemap -f server/add-image-blob-columns.sql
+psql -U pridemap -d pridemap -f server/add-regions.sql
 ```
 
 Existing names and descriptions remain the English content; French fields are

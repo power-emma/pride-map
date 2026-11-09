@@ -4,6 +4,7 @@ export type AuthUser = {
   username: string;
   email: string | null;
   isAdmin: boolean;
+  regionAdminIds: number[];
 };
 
 const TOKEN_KEY = 'pride_map_token';
@@ -17,7 +18,8 @@ export function getStoredSession(): StoredSession | null {
   // A token without a user predates accounts; the server rejects those anyway.
   if (!token || !rawUser) return null;
   try {
-    return { token, user: JSON.parse(rawUser) as AuthUser };
+    const user = JSON.parse(rawUser) as AuthUser;
+    return { token, user: { ...user, regionAdminIds: user.regionAdminIds ?? [] } };
   } catch {
     return null;
   }

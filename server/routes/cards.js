@@ -5,6 +5,13 @@ const pool = require('../db'); // Ensure this is your database connection
 // Get all locations for cards (doesn't require coordinates)
 router.get('/', async (req, res) => {
     try {
+        const regionId = Number(req.query.region_id);
+        if (!Number.isInteger(regionId) || regionId <= 0) {
+            return res.status(400).json({ code: 'INVALID_REGION_ID' });
+        }
+        const params = [];
+        params.push(regionId);
+        const regionFilter = 'WHERE l.region_id = $1';
         const result = await pool.query(`
             SELECT
                 l.name,
@@ -23,9 +30,10 @@ router.get('/', async (req, res) => {
             FROM locations l
             LEFT JOIN location_categories lc ON lc.id_location = l.id
             LEFT JOIN categories c ON c.id = lc.id_category
+            ${regionFilter}
             GROUP BY l.id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
             ORDER BY l.name
-        `);
+        `, params);
         const cards = result.rows.map(location => ({
             name: location.name,
             name_fr: location.name_fr,
@@ -48,6 +56,10 @@ router.get('/', async (req, res) => {
 // Get only locations with valid coordinates
 router.get('/with-location', async (req, res) => {
     try {
+        const regionId = Number(req.query.region_id);
+        if (!Number.isInteger(regionId) || regionId <= 0) {
+            return res.status(400).json({ code: 'INVALID_REGION_ID' });
+        }
         const result = await pool.query(`
             SELECT
                 l.name,
@@ -66,10 +78,10 @@ router.get('/with-location', async (req, res) => {
             FROM locations l
             LEFT JOIN location_categories lc ON lc.id_location = l.id
             LEFT JOIN categories c ON c.id = lc.id_category
-            WHERE l.latitude IS NOT NULL AND l.longitude IS NOT NULL
+            WHERE l.latitude IS NOT NULL AND l.longitude IS NOT NULL AND l.region_id = $1
             GROUP BY l.id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
             ORDER BY l.name
-        `);
+        `, [regionId]);
         const cards = result.rows.map(location => ({
             name: location.name,
             name_fr: location.name_fr,

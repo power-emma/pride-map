@@ -9,11 +9,13 @@ import AccountPanel from './components/AccountPanel';
 import { CITY_NAME } from './config';
 import { localizedApiError } from './localizedApiError';
 import type { AuthUser } from './auth';
+import type { Region } from './regions';
 
 type Category = { id: number; name: string };
 
 type Location = {
   id: number;
+  region_id: number;
   name: string;
   name_fr: string | null;
   description: string | null;
@@ -29,6 +31,7 @@ type Location = {
 
 type EventItem = {
   id: number;
+  region_id: number;
   title: string;
   title_fr: string | null;
   description: string | null;
@@ -63,6 +66,7 @@ type Submission = {
   submitter_username?: string | null;
   category_ids: number[];
   status: string;
+  region_id: number;
   created_at: string;
 };
 
@@ -74,6 +78,7 @@ interface ManageLocationsPageProps {
    * everyone else sees and manages only their own content.
    */
   user: AuthUser;
+  selectedRegionId: number | null;
   /** Called when the server returns 401, so App can clear the token. */
   onAuthError: () => void;
 }
@@ -111,10 +116,13 @@ function submissionStatusColour(status: string) {
   return '#e0b84c';
 }
 
-export default function ManageLocationsPage({ authToken, user, onAuthError }: ManageLocationsPageProps) {
+export default function ManageLocationsPage({ authToken, user, selectedRegionId, onAuthError }: ManageLocationsPageProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const isAdmin = user.isAdmin;
+  const isGlobalAdmin = user.isAdmin;
+  const isAdmin = isGlobalAdmin || user.regionAdminIds.length > 0;
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [contentRegionId, setContentRegionId] = useState<number | null>(isAdmin ? null : selectedRegionId);
   const [locations, setLocations] = useState<Location[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +157,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
   const [eventTime, setEventTime] = useState('');
   const [eventLocation, setEventLocation] = useState('');
   const [eventLocationId, setEventLocationId] = useState<number | null>(null);
+  const [eventRegionId, setEventRegionId] = useState<number | null>(selectedRegionId);
   const [eventCity, setEventCity] = useState(CITY_NAME);
   const [eventUrl, setEventUrl] = useState('');
   const [eventImageUrl, setEventImageUrl] = useState('');
@@ -176,6 +185,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
   const [imageUrl, setImageUrl] = useState('');
   const [hasImage, setHasImage] = useState(false);
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
+  const [locationRegionId, setLocationRegionId] = useState<number | null>(selectedRegionId);
 
   const [geocodeResults, setGeocodeResults] = useState<Array<{ displayName: string; latitude: string; longitude: string }>>([]);
   const [geocoding, setGeocoding] = useState(false);
@@ -188,8 +198,43 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch(isAdmin ? '/api/regions/manage' : '/api/regions', {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then(async response => {
+        if (response.status === 401) { onAuthError(); return []; }
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json() as Promise<Region[]>;
+      })
+      .then(list => {
+        if (cancelled || !list) return;
+        setRegions(list);
+        setContentRegionId(current => list.some(region => region.id === current)
+          ? current
+          : list.find(region => region.id === selectedRegionId)?.id ?? list[0]?.id ?? null);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        console.error('Failed to load regions:', error);
+        setLoadError(i18nInstance.t('errors.network'));
+      });
+    return () => { cancelled = true; };
+  }, [authToken, isAdmin, onAuthError, selectedRegionId]);
+
+  useEffect(() => {
+    if (selectedRegionId !== null && (!isAdmin || regions.some(region => region.id === selectedRegionId))) {
+      setContentRegionId(selectedRegionId);
+      setEventRegionId(selectedRegionId);
+      setLocationRegionId(selectedRegionId);
+    }
+  }, [isAdmin, regions, selectedRegionId]);
+
+  useEffect(() => {
+    if (isAdmin && contentRegionId === null) return;
+    setLoading(true);
     Promise.all([
-      fetch(isAdmin ? '/api/locations' : '/api/locations/mine', {
+      fetch(isAdmin ? `/api/locations?region_id=${contentRegionId}` : '/api/locations/mine', {
         headers: { 'Authorization': `Bearer ${authToken}` },
       }),
       fetch('/api/categories'),
@@ -206,13 +251,14 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
         setLoadError(i18nInstance.t('errors.network'));
       })
       .finally(() => setLoading(false));
-  }, [authToken, isAdmin, onAuthError]);
+  }, [authToken, contentRegionId, isAdmin, onAuthError]);
 
   // Admins load the pending review queue; everyone else their own submissions.
   useEffect(() => {
     let cancelled = false;
     setSubmissionsError(null);
-    fetch(isAdmin ? '/api/submissions?status=pending' : '/api/submissions/mine', {
+    if (isAdmin && contentRegionId === null) return;
+    fetch(isAdmin ? `/api/submissions?status=pending&region_id=${contentRegionId}` : '/api/submissions/mine', {
       headers: { 'Authorization': `Bearer ${authToken}` },
     })
       .then(async (res) => {
@@ -230,14 +276,15 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
         }
       });
     return () => { cancelled = true; };
-  }, [authToken, isAdmin, onAuthError]);
+  }, [authToken, contentRegionId, isAdmin, onAuthError]);
 
   // Load events for management (including past ones): all of them for admins,
   // otherwise just the user's own.
   useEffect(() => {
     let cancelled = false;
     setEventsError(null);
-    fetch(isAdmin ? '/api/events/all' : '/api/events/mine', {
+    if (isAdmin && contentRegionId === null) return;
+    fetch(isAdmin ? `/api/events/all?region_id=${contentRegionId}` : '/api/events/mine', {
       headers: { 'Authorization': `Bearer ${authToken}` },
     })
       .then(async (res) => {
@@ -255,7 +302,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
         }
       });
     return () => { cancelled = true; };
-  }, [authToken, isAdmin, onAuthError]);
+  }, [authToken, contentRegionId, isAdmin, onAuthError]);
 
   const categoryNameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -285,6 +332,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
       // Reflect the new live location without a refetch.
       const newLoc: Location = {
         id: json.locationId,
+        region_id: sub.region_id,
         name: sub.name,
         name_fr: sub.name_fr,
         description: sub.description,
@@ -439,6 +487,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
     setImageUrl('');
     setHasImage(false);
     setCategoryIds([]);
+    setLocationRegionId(contentRegionId);
     setGeocodeResults([]);
     setGeocodeError(null);
     setSaveError(null);
@@ -515,6 +564,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
     setImageUrl(loc.image_url ?? '');
     setHasImage(loc.has_image);
     setCategoryIds(loc.category_ids);
+    setLocationRegionId(loc.region_id);
   }
 
   function openCreate() {
@@ -552,6 +602,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
       url: toNullIfEmpty(url),
       image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
+      region_id: isAdmin ? locationRegionId : undefined,
     };
 
     setSaving(true);
@@ -574,7 +625,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
       setLocations(prev =>
         prev.map(l =>
           l.id === selectedId
-            ? { ...l, ...payload }
+            ? { ...l, ...payload, region_id: locationRegionId ?? l.region_id }
             : l
         )
       );
@@ -610,6 +661,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
       url: toNullIfEmpty(url),
       image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
+      region_id: locationRegionId,
     };
 
     setSaving(true);
@@ -629,7 +681,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
         return;
       }
 
-      const newLoc: Location = { id: json.id, ...payload, has_image: false, category_ids: payload.category_ids };
+      const newLoc: Location = { id: json.id, ...payload, region_id: json.region_id, has_image: false, category_ids: payload.category_ids };
       setLocations(prev => [...prev, newLoc].sort((a, b) => a.name.localeCompare(b.name)));
       setSaveSuccess(t('admin.locationCreated'));
       // Switch to editing the new location
@@ -684,6 +736,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
     setEventTime('');
     setEventLocation('');
     setEventLocationId(null);
+    setEventRegionId(contentRegionId ?? selectedRegionId);
     setEventCity(CITY_NAME);
     setEventUrl('');
     setEventImageUrl('');
@@ -705,6 +758,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
     setEventTime(ev.event_time ?? '');
     setEventLocation(ev.location ?? '');
     setEventLocationId(ev.location_id ?? null);
+    setEventRegionId(ev.region_id);
     setEventCity(ev.city);
     setEventUrl(ev.url ?? '');
     setEventImageUrl(ev.image_url ?? '');
@@ -730,6 +784,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
       city: eventCity.trim() || CITY_NAME,
       url: toNullIfEmpty(eventUrl),
       image_url: toNullIfEmpty(eventImageUrl),
+      region_id: eventRegionId,
     };
   }
 
@@ -862,6 +917,20 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
         <span style={{ fontWeight: 600 }}>{t('admin.frenchName')}</span>
         <input value={nameFr} onChange={e => setNameFr(e.target.value)} style={inputStyle} />
       </label>
+
+      {isAdmin && (
+        <label style={labelStyle}>
+          <span style={{ fontWeight: 600 }}>{t('regions.regionName')}</span>
+          <select
+            required
+            value={locationRegionId ?? ''}
+            onChange={e => setLocationRegionId(Number(e.target.value))}
+            style={inputStyle}
+          >
+            {regions.map(region => <option key={region.id} value={region.id}>{region.name}</option>)}
+          </select>
+        </label>
+      )}
 
       <div style={labelStyle}>
         <span style={{ fontWeight: 600 }}>{t('admin.categories')}</span>
@@ -1037,6 +1106,18 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
 
   const eventForm = (isCreate: boolean) => (
     <form onSubmit={isCreate ? handleEventCreate : handleEventSave} style={{ display: 'grid', gap: '0.75rem' }}>
+      <label style={labelStyle}>
+        <span style={{ fontWeight: 600 }}>{t('regions.regionName')}</span>
+        <select
+          required
+          value={eventRegionId ?? ''}
+          onChange={e => setEventRegionId(Number(e.target.value))}
+          style={inputStyle}
+        >
+          {regions.map(region => <option key={region.id} value={region.id}>{region.name}</option>)}
+        </select>
+      </label>
+
       <label style={labelStyle}>
         <span style={{ fontWeight: 600 }}>{t('admin.eventsTitle')}</span>
         <input value={eventTitle} onChange={e => setEventTitle(e.target.value)} style={inputStyle} />
@@ -1493,6 +1574,27 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 72px)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid #333', flexWrap: 'wrap', alignItems: 'center' }}>
+        {isAdmin && regions.length > 1 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.5rem' }}>
+            <span>{t('regions.regionName')}</span>
+            <select
+              value={contentRegionId ?? ''}
+              onChange={event => {
+                const nextRegionId = Number(event.target.value);
+                setContentRegionId(nextRegionId);
+                setLocationRegionId(nextRegionId);
+                setEventRegionId(nextRegionId);
+                setSelectedId(null);
+                setSelectedEventId(null);
+                setMode('idle');
+                setEventMode('idle');
+              }}
+              style={{ ...inputStyle, width: 'auto' }}
+            >
+              {regions.map(region => <option key={region.id} value={region.id}>{region.name}</option>)}
+            </select>
+          </label>
+        )}
         <button type="button" onClick={() => setView('locations')} style={tabBtnStyle(view === 'locations')}>
           {isAdmin ? t('admin.tabsLocations') : t('admin.tabsMyLocations')}
         </button>
@@ -1504,7 +1606,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
         <button type="button" onClick={() => setView('events')} style={tabBtnStyle(view === 'events')}>
           {events.length > 0 ? t('admin.eventsPlural', { count: events.length }) : t('admin.tabsEvents')}
         </button>
-        {isAdmin && (
+        {isGlobalAdmin && (
           <button type="button" onClick={() => setView('users')} style={tabBtnStyle(view === 'users')}>
             {t('admin.tabsUsers')}
           </button>
@@ -1519,7 +1621,7 @@ export default function ManageLocationsPage({ authToken, user, onAuthError }: Ma
 
       {view === 'submissions' ? submissionsPanel
         : view === 'events' ? eventsPanel
-        : view === 'users' && isAdmin ? <AdminUsersPanel authToken={authToken} currentUserId={user.id} onAuthError={onAuthError} />
+        : view === 'users' && isGlobalAdmin ? <AdminUsersPanel authToken={authToken} currentUserId={user.id} onAuthError={onAuthError} />
         : view === 'account' ? <AccountPanel user={user} />
         : (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>

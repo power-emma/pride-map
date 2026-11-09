@@ -41,6 +41,8 @@ import CardDeck from '../CardDeck';
 import MarkerComponent from '../MarkerComponent';
 import LocationSidebar from '../components/LocationSidebar';
 import ImageUploadControl from '../components/ImageUploadControl';
+import RegionSelector from '../components/RegionSelector';
+import ManageRegionsPage from '../ManageRegionsPage';
 import App from '../App';
 import CreateLocationPage from '../CreateLocationPage';
 import LoginPage from '../LoginPage';
@@ -56,6 +58,12 @@ describe('CreateLocationPage', () => {
                 return {
                     ok: true,
                     json: async () => [],
+                } as Response;
+            }
+            if (url.startsWith('/api/regions')) {
+                return {
+                    ok: true,
+                    json: async () => [{ id: 1, name: 'Ottawa' }],
                 } as Response;
             }
             if (url.includes('nominatim.openstreetmap.org')) {
@@ -375,13 +383,13 @@ describe('CardDeck', () => {
         vi.unstubAllGlobals();
     });
 
-    it('fetches cards from /api/cards on mount', async () => {
-        render(<CardDeck title="Services" />);
-        await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/cards'));
+    it('fetches cards for the selected region on mount', async () => {
+        render(<CardDeck title="Services" regionId={1} />);
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/cards?region_id=1'));
     });
 
     it('renders a card for each fetched item', async () => {
-        render(<CardDeck title="Services" />);
+        render(<CardDeck title="Services" regionId={1} />);
         await waitFor(() => {
             expect(screen.getByText('AIDS Committee of Ottawa')).toBeInTheDocument();
             expect(screen.getByText('Bruce House')).toBeInTheDocument();
@@ -389,7 +397,7 @@ describe('CardDeck', () => {
     });
 
     it('renders the deck title', async () => {
-        render(<CardDeck title="Off-Map Services!" />);
+        render(<CardDeck title="Off-Map Services!" regionId={1} />);
         expect(screen.getByText('Off-Map Services!')).toBeInTheDocument();
     });
 
@@ -397,7 +405,7 @@ describe('CardDeck', () => {
         const user = userEvent.setup();
         const noDescCards = [{ name: 'Empty', description: null, address: null, latitude: null, longitude: null, url: null, categories: [] }];
         (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ json: () => Promise.resolve(noDescCards) });
-        render(<CardDeck title="Services" />);
+        render(<CardDeck title="Services" regionId={1} />);
         // wait for card to appear, then open accordion to reveal body
         await waitFor(() => expect(screen.getByText('Empty')).toBeInTheDocument());
         await user.click(screen.getByRole('button', { name: /empty/i }));
@@ -405,7 +413,7 @@ describe('CardDeck', () => {
     });
 
     it('shows all cards when categoryFilter is null', async () => {
-        render(<CardDeck title="Services" categoryFilter={null} />);
+        render(<CardDeck title="Services" categoryFilter={null} regionId={1} />);
         await waitFor(() => {
             expect(screen.getByText('AIDS Committee of Ottawa')).toBeInTheDocument();
             expect(screen.getByText('Bruce House')).toBeInTheDocument();
@@ -413,7 +421,7 @@ describe('CardDeck', () => {
     });
 
     it('shows only cards matching the active categoryFilter', async () => {
-        render(<CardDeck title="Services" categoryFilter="Housing and Shelter" />);
+        render(<CardDeck title="Services" categoryFilter="Housing and Shelter" regionId={1} />);
         await waitFor(() => {
             expect(screen.queryByText('AIDS Committee of Ottawa')).not.toBeInTheDocument();
             expect(screen.getByText('Bruce House')).toBeInTheDocument();
@@ -421,7 +429,7 @@ describe('CardDeck', () => {
     });
 
     it('shows no cards when categoryFilter matches nothing', async () => {
-        render(<CardDeck title="Services" categoryFilter="Student Resources" />);
+        render(<CardDeck title="Services" categoryFilter="Student Resources" regionId={1} />);
         await waitFor(() => {
             expect(screen.queryByText('AIDS Committee of Ottawa')).not.toBeInTheDocument();
             expect(screen.queryByText('Bruce House')).not.toBeInTheDocument();
@@ -429,7 +437,7 @@ describe('CardDeck', () => {
     });
 
     it('renders category tags on each card', async () => {
-        render(<CardDeck title="Services" />);
+        render(<CardDeck title="Services" regionId={1} />);
         await waitFor(() => {
             expect(screen.getByText('Community Organisations')).toBeInTheDocument();
             expect(screen.getByText('Housing and Shelter')).toBeInTheDocument();
@@ -447,12 +455,101 @@ describe('CardDeck', () => {
             }]),
         });
 
-        render(<CardDeck title="Services" />);
+        render(<CardDeck title="Services" regionId={1} />);
         await user.click(await screen.findByRole('button', { name: /comité de lutte/i }));
         expect(screen.getByText('Soutien communautaire.')).toBeInTheDocument();
         expect(screen.getByText('Organismes communautaires')).toBeInTheDocument();
 
         await act(async () => { await i18n.changeLanguage('en'); });
+    });
+});
+
+describe('RegionSelector', () => {
+    it('searches and selects a region by name', async () => {
+        const user = userEvent.setup();
+        const onChange = vi.fn();
+        render(
+            <RegionSelector
+                regions={[{ id: 1, name: 'Ottawa' }, { id: 2, name: 'Toronto' }]}
+                selectedRegionId={1}
+                onChange={onChange}
+            />
+        );
+
+        const input = screen.getByRole('combobox', { name: /select a region/i });
+        await user.click(input);
+        expect(screen.getAllByRole('option')).toHaveLength(2);
+        await user.type(input, 'Toronto');
+        expect(screen.getAllByRole('option')).toHaveLength(1);
+        expect(screen.getByRole('option')).toHaveTextContent('Toronto');
+        expect(onChange).not.toHaveBeenCalled();
+        await user.click(screen.getByRole('option', { name: 'Toronto' }));
+        expect(onChange).toHaveBeenLastCalledWith(2);
+    });
+
+    it('shows all choices before typing and supports keyboard selection', async () => {
+        const user = userEvent.setup();
+        const onChange = vi.fn();
+        render(
+            <RegionSelector
+                regions={[{ id: 1, name: 'Ottawa' }, { id: 2, name: 'Toronto' }]}
+                selectedRegionId={1}
+                onChange={onChange}
+            />
+        );
+
+        const input = screen.getByRole('combobox', { name: /select a region/i });
+        await user.click(screen.getByRole('button', { name: /select a region/i }));
+        expect(screen.getAllByRole('option')).toHaveLength(2);
+        await user.keyboard('{ArrowDown}{Enter}');
+        expect(onChange).toHaveBeenCalledWith(2);
+        expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+        expect(input).toHaveValue('Ottawa');
+    });
+});
+
+describe('ManageRegionsPage', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('separates region creation and management and searches for admin accounts', async () => {
+        const user = userEvent.setup();
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url === '/api/regions/manage') {
+                return { ok: true, status: 200, json: async () => [{ id: 1, name: 'Ottawa' }] } as Response;
+            }
+            if (url === '/api/regions/1/admins') {
+                return { ok: true, status: 200, json: async () => [] } as Response;
+            }
+            if (url.startsWith('/api/regions/1/admins/search')) {
+                return { ok: true, status: 200, json: async () => [{ id: 2, username: 'emma', email: null }] } as Response;
+            }
+            return { ok: true, status: 204, json: async () => null } as Response;
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        render(
+            <ManageRegionsPage
+                authToken="test-token"
+                user={{ id: 1, username: 'admin', email: null, isAdmin: true, regionAdminIds: [] }}
+                onAuthError={() => {}}
+            />
+        );
+
+        expect(await screen.findByRole('heading', { name: /manage existing region/i })).toBeInTheDocument();
+        expect(screen.getByText('Region name:')).toBeInTheDocument();
+        const search = screen.getByRole('searchbox', { name: /search usernames/i });
+        await user.type(search, 'em');
+        const suggestion = await screen.findByText('emma');
+        expect(suggestion).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: /add admin/i }));
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalledWith(
+                '/api/regions/1/admins/2',
+                expect.objectContaining({ method: 'POST' })
+            );
+        });
     });
 });
 
@@ -521,9 +618,12 @@ describe('LocationSidebar', () => {
 // ─── App (smoke test) ────────────────────────────────────────────────────────
 describe('App', () => {
     beforeEach(() => {
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-            json: () => Promise.resolve(mockCards),
-        }));
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => ({
+            ok: true,
+            json: () => Promise.resolve(
+                String(input) === '/api/regions' ? [{ id: 1, name: 'Ottawa' }] : mockCards
+            ),
+        } as Response)));
     });
 
     afterEach(() => {

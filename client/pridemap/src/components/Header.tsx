@@ -6,11 +6,12 @@ interface HeaderProps {
     authToken?: string | null;
     /** Admins see "Admin dashboard" instead of "My dashboard". */
     isAdmin?: boolean;
+    canManageRegions?: boolean;
     onLogout?: () => void;
     children?: React.ReactNode;
 }
 
-export const Header: React.FC<HeaderProps> = ({ authToken, isAdmin = false, onLogout, children }) => {
+export const Header: React.FC<HeaderProps> = ({ authToken, isAdmin = false, canManageRegions = false, onLogout, children }) => {
     const { t, i18n: locale } = useTranslation();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -73,6 +74,15 @@ export const Header: React.FC<HeaderProps> = ({ authToken, isAdmin = false, onLo
                                 ? (isAdmin ? t('header.adminDashboard') : t('header.myDashboard'))
                                 : t('header.signIn')}
                         </Link>
+                        {canManageRegions && (
+                            <Link
+                                to="/manage-regions"
+                                className="site-header__dropdown-item"
+                                onClick={() => setMenuOpen(false)}
+                            >
+                                {t('regions.manageTitle')}
+                            </Link>
+                        )}
                         {authToken && onLogout && (
                             <button
                                 type="button"

@@ -10,8 +10,11 @@ import CardDeck from './CardDeck';
 import EventsCard from './components/EventsCard';
 import CreateLocationPage from './CreateLocationPage.tsx';
 import ManageLocationsPage from './ManageLocationsPage.tsx';
+import ManageRegionsPage from './ManageRegionsPage.tsx';
 import LoginPage from './LoginPage.tsx';
 import { clearStoredSession, getStoredSession, storeSession, type AuthUser, type StoredSession } from './auth';
+import { getStoredRegionId, storeActiveRegionId, type Region } from './regions';
+import RegionSelector from './components/RegionSelector';
 
 function App() {
 	const { t } = useTranslation();
@@ -20,9 +23,44 @@ function App() {
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [session, setSession] = useState<StoredSession | null>(getStoredSession);
+	const [regions, setRegions] = useState<Region[]>([]);
+	const [activeRegionId, setActiveRegionId] = useState<number | null>(getStoredRegionId);
 	const authToken = session?.token ?? null;
 	const authUser = session?.user ?? null;
 	const [servicesOpen, setServicesOpen] = useState(false);
+	const activeRegion = regions.find(region => region.id === activeRegionId);
+	const canManageRegions = Boolean(authUser?.isAdmin || authUser?.regionAdminIds?.length);
+
+	useEffect(() => {
+		let cancelled = false;
+		fetch('/api/regions')
+			.then(async response => {
+				if (!response.ok) throw new Error(String(response.status));
+				return response.json() as Promise<Region[]>;
+			})
+			.then(list => {
+				if (cancelled) return;
+				setRegions(list);
+				const storedId = getStoredRegionId();
+				const nextRegion = list.find(region => region.id === storedId)
+					?? list.find(region => region.name.toLocaleLowerCase() === 'ottawa')
+					?? list[0];
+				if (nextRegion) {
+					setActiveRegionId(nextRegion.id);
+					storeActiveRegionId(nextRegion.id);
+				}
+			})
+			.catch(error => console.error('Could not load regions:', error));
+		return () => { cancelled = true; };
+	}, []);
+
+	const handleRegionChange = useCallback((regionId: number) => {
+		setActiveRegionId(regionId);
+		storeActiveRegionId(regionId);
+		setSelectedLocation(null);
+		setSelectedDetails(null);
+		setServicesOpen(false);
+	}, []);
 
 	const handleLocationSelect = (lat: number, lng: number, name: string, details?: Partial<LocationSidebarItem>) => {
 		setSelectedLocation({lat, lng, name});
@@ -71,7 +109,7 @@ function App() {
 		return () => { cancelled = true; };
 	}, [authToken, handleLogout]);
 
-	const header = <Header authToken={authToken} isAdmin={authUser?.isAdmin ?? false} onLogout={handleLogout} />;
+	const header = <Header authToken={authToken} isAdmin={canManageRegions} canManageRegions={canManageRegions} onLogout={handleLogout} />;
 
 	return (
 		<>
@@ -80,7 +118,7 @@ function App() {
 					path="/"
 					element={
 						<div className="map-page">
-							<Header authToken={authToken} isAdmin={authUser?.isAdmin ?? false} onLogout={handleLogout}>
+							<Header authToken={authToken} isAdmin={canManageRegions} canManageRegions={canManageRegions} onLogout={handleLogout}>
 								<div className="header-search-row">
 									<SearchBar
 										query={searchQuery}
@@ -88,6 +126,7 @@ function App() {
 										selectedCategory={categoryFilter}
 										onCategoryChange={setCategoryFilter}
 									/>
+									<RegionSelector regions={regions} selectedRegionId={activeRegionId} onChange={handleRegionChange} />
 									{!selectedDetails && (
 										<button
 											type="button"
@@ -105,11 +144,12 @@ function App() {
 									selectedLocation={selectedLocation}
 									categoryFilter={categoryFilter}
 									searchQuery={searchQuery}
+									regionId={activeRegionId}
 									onMarkerSelect={handleLocationSelect}
 								/>
 							</div>
 
-							{!selectedDetails && !servicesOpen && <EventsCard />}
+							{!selectedDetails && !servicesOpen && activeRegion && <EventsCard regionId={activeRegion.id} regionName={activeRegion.name} />}
 
 							<LocationSidebar location={selectedDetails} onClose={() => setSelectedDetails(null)} />
 
@@ -131,7 +171,7 @@ function App() {
 									×
 								</button>
 								<div className="services-drawer__body">
-									<CardDeck title={t('map.servicesTitle')} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} searchQuery={searchQuery} />
+									<CardDeck title={t('map.servicesTitle')} onLocationSelect={handleLocationSelect} categoryFilter={categoryFilter} searchQuery={searchQuery} regionId={activeRegionId} />
 								</div>
 							</aside>
 						</div>
@@ -143,7 +183,7 @@ function App() {
 						<>
 							{header}
 							{authToken
-								? <CreateLocationPage authToken={authToken} onAuthError={handleLogout} />
+								? <CreateLocationPage authToken={authToken} selectedRegionId={activeRegionId} onAuthError={handleLogout} />
 								: <LoginPage onLogin={handleLogin} intro={t('login.submitIntro')} />}
 						</>
 					}
@@ -155,8 +195,21 @@ function App() {
 							{header}
 							{authToken && authUser
 								// Keyed by account so switching users never shows stale data.
-								? <ManageLocationsPage key={authUser.id} authToken={authToken} user={authUser} onAuthError={handleLogout} />
+								? <ManageLocationsPage key={authUser.id} authToken={authToken} user={authUser} selectedRegionId={activeRegionId} onAuthError={handleLogout} />
 								: <LoginPage onLogin={handleLogin} />}
+						</>
+					}
+				/>
+				<Route
+					path="/manage-regions"
+					element={
+						<>
+							{header}
+							{authToken && authUser && canManageRegions
+								? <ManageRegionsPage key={authUser.id} authToken={authToken} user={authUser} onAuthError={handleLogout} />
+								: authToken
+									? <Navigate to="/manage-locations" replace />
+									: <LoginPage onLogin={handleLogin} />}
 						</>
 					}
 				/>

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { requireAuth, requireAdmin, ownershipFilter } = require('../middleware/auth');
+const { requireAuth, requireRegionalAdmin, canManageRegion, ownershipFilter } = require('../middleware/auth');
 const { createRateLimiter, rejectIfLimited } = require('../middleware/rateLimit');
 const { handleImageUpload } = require('../middleware/upload');
 
@@ -46,7 +46,7 @@ const SUBMISSION_COLUMNS = `
   s.id, s.name, s.name_fr, s.description, s.description_fr, s.address,
   s.latitude::float8 AS latitude, s.longitude::float8 AS longitude,
   s.url, s.image_url, (s.image_data IS NOT NULL) AS has_image,
-  s.submitter_email, s.category_ids, s.status, s.created_at, s.reviewed_at`;
+  s.submitter_email, s.category_ids, s.status, s.created_at, s.reviewed_at, s.region_id`;
 
 // ---------------------------------------------------------------------------
 // POST /submissions  — any signed-in user, rate limited per account
@@ -86,15 +86,19 @@ router.post('/', requireAuth, async (req, res) => {
     if (categoryIds === null) {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
+    const regionId = Number.parseInt(req.body?.region_id, 10);
+    if (!Number.isInteger(regionId) || regionId <= 0) {
+      return res.status(400).json({ code: 'INVALID_REGION_ID' });
+    }
 
     // Persist as a pending submission. The contact email is a snapshot of the
     // account's, so admins can still reach the submitter if it changes later.
     const result = await pool.query(
       `INSERT INTO submissions
-         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, submitter_email, category_ids, user_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending')
+         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, submitter_email, category_ids, user_id, status, region_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13)
        RETURNING id`,
-      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, req.user.email, categoryIds, req.user.id]
+      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, req.user.email, categoryIds, req.user.id, regionId]
     );
 
     submissionLimiter.record(req.user.id);
@@ -115,7 +119,7 @@ router.post('/', requireAuth, async (req, res) => {
 // Pass ?status=approved|rejected|all to see others.
 // ---------------------------------------------------------------------------
 
-router.get('/', requireAdmin, async (req, res) => {
+router.get('/', requireRegionalAdmin, async (req, res) => {
   try {
     const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
     if (!['pending', 'approved', 'rejected', 'all'].includes(status)) {
@@ -124,9 +128,19 @@ router.get('/', requireAdmin, async (req, res) => {
 
     const params = [];
     let where = '';
+    const regionId = req.query.region_id === undefined ? null : Number.parseInt(req.query.region_id, 10);
+    if (regionId !== null) {
+      if (!Number.isInteger(regionId) || regionId <= 0) return res.status(400).json({ code: 'INVALID_REGION_ID' });
+      if (!canManageRegion(req.user, regionId)) return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
+      params.push(regionId);
+      where = `WHERE s.region_id = $${params.length}`;
+    } else if (!req.user.isAdmin) {
+      params.push(req.user.regionAdminIds);
+      where = `WHERE s.region_id = ANY($${params.length}::int[])`;
+    }
     if (status !== 'all') {
       params.push(status);
-      where = 'WHERE s.status = $1';
+      where += `${where ? ' AND' : 'WHERE'} s.status = $${params.length}`;
     }
 
     const result = await pool.query(
@@ -214,14 +228,22 @@ router.put('/:id', requireAuth, async (req, res) => {
     if (categoryIds === null) {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
+    const regionId = req.body?.region_id === undefined ? null : Number.parseInt(req.body.region_id, 10);
+    if (regionId !== null && (!Number.isInteger(regionId) || regionId <= 0)) {
+      return res.status(400).json({ code: 'INVALID_REGION_ID' });
+    }
+    if (regionId !== null && req.user.regionAdminIds?.length && !canManageRegion(req.user, regionId)) {
+      return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
+    }
 
-    const params = [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail?.trim() ?? null, categoryIds, id];
+    const params = [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail?.trim() ?? null, categoryIds, id, regionId];
     const result = await pool.query(
       `UPDATE submissions
          SET name = $1, name_fr = $2, description = $3, description_fr = $4,
              address = $5, latitude = $6, longitude = $7, url = $8,
-             image_url = $9, submitter_email = COALESCE($10, submitter_email), category_ids = $11
-       WHERE id = $12 AND status = 'pending'${ownershipFilter(req.user, params, 'user_id')}
+             image_url = $9, submitter_email = COALESCE($10, submitter_email), category_ids = $11,
+             region_id = COALESCE($13, region_id)
+       WHERE id = $12 AND status = 'pending'${ownershipFilter(req.user, params, 'user_id', 'region_id')}
        RETURNING id, name, name_fr, description, description_fr, address,
                  latitude::float8 AS latitude, longitude::float8 AS longitude,
                  url, image_url, submitter_email, category_ids, status, created_at`,
@@ -273,7 +295,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 // submitter, and marks it approved. Returns the newly created location id.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/approve', requireAdmin, async (req, res) => {
+router.post('/:id/approve', requireRegionalAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
     const id = parseInt(req.params.id, 10);
@@ -285,7 +307,7 @@ router.post('/:id/approve', requireAdmin, async (req, res) => {
 
     const sub = await client.query(
       `SELECT name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
-              image_data, image_mime_type, category_ids, user_id, status
+              image_data, image_mime_type, category_ids, user_id, status, region_id
        FROM submissions WHERE id = $1 FOR UPDATE`,
       [id]
     );
@@ -300,11 +322,15 @@ router.post('/:id/approve', requireAdmin, async (req, res) => {
     }
 
     const s = sub.rows[0];
+    if (!canManageRegion(req.user, s.region_id)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
+    }
 
     const loc = await client.query(
-      `INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, image_data, image_mime_type, owner_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-      [s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type, s.user_id]
+      `INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, image_data, image_mime_type, owner_id, region_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+      [s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type, s.user_id, s.region_id]
     );
     const locationId = loc.rows[0].id;
 
@@ -337,17 +363,21 @@ router.post('/:id/approve', requireAdmin, async (req, res) => {
 // POST /submissions/:id/reject  — admin only.
 // ---------------------------------------------------------------------------
 
-router.post('/:id/reject', requireAdmin, async (req, res) => {
+router.post('/:id/reject', requireRegionalAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ code: 'INVALID_SUBMISSION_ID' });
     }
 
+    const params = [id];
+    const regionFilter = req.user.isAdmin
+      ? ''
+      : (params.push(req.user.regionAdminIds), ` AND region_id = ANY($${params.length}::int[])`);
     const result = await pool.query(
       `UPDATE submissions SET status = 'rejected', reviewed_at = NOW()
-       WHERE id = $1 AND status = 'pending' RETURNING id`,
-      [id]
+       WHERE id = $1 AND status = 'pending'${regionFilter} RETURNING id`,
+      params
     );
 
     if (result.rowCount === 0) {
@@ -364,7 +394,7 @@ router.post('/:id/reject', requireAdmin, async (req, res) => {
 // Admins may touch any submission; submitters only their own pending ones.
 function pendingOwnFilter(user, params) {
   if (user.isAdmin) return '';
-  return ` AND status = 'pending'${ownershipFilter(user, params, 'user_id')}`;
+  return ` AND status = 'pending'${ownershipFilter(user, params, 'user_id', 'region_id')}`;
 }
 
 // GET /submissions/:id/image — public. Same sensitivity as the photo itself

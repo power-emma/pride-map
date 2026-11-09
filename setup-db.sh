@@ -218,7 +218,8 @@ for migration in \
     add-french-event-content.sql \
     add-image-columns.sql \
     add-image-blob-columns.sql \
-    add-user-accounts.sql; do
+    add-user-accounts.sql \
+    add-regions.sql; do
     MIGRATION_SQL="$SCRIPT_DIR/server/$migration"
     if [ -f "$MIGRATION_SQL" ]; then
         echo "Applying database migration '$migration'..."
@@ -236,7 +237,7 @@ done
 echo "Verifying database setup..."
 
 verification_failed=false
-for tbl in categories locations location_categories admin_users users password_change_requests submissions events; do
+for tbl in categories locations location_categories admin_users users password_change_requests submissions events regions region_admins; do
     exists=$(run_psql_db -tAc "SELECT to_regclass('public.$tbl') IS NOT NULL;" 2>/dev/null | xargs)
     if [ "$exists" = "t" ]; then
         echo "  ✓ table '$tbl' present"
@@ -250,7 +251,7 @@ for column in \
     locations.name_fr locations.description_fr locations.image_url locations.image_data locations.image_mime_type \
     submissions.name_fr submissions.description_fr submissions.image_url submissions.image_data submissions.image_mime_type \
     events.title_fr events.description_fr events.location_id events.image_url events.image_data events.image_mime_type \
-    locations.owner_id events.owner_id submissions.user_id; do
+    locations.owner_id events.owner_id submissions.user_id locations.region_id events.region_id submissions.region_id; do
     tbl=${column%%.*}
     col=${column#*.}
     exists=$(run_psql_db -tAc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$tbl' AND column_name = '$col');" 2>/dev/null | xargs)
