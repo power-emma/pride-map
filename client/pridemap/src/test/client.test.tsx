@@ -538,7 +538,7 @@ describe('ManageRegionsPage', () => {
         );
 
         expect(await screen.findByRole('heading', { name: /manage existing region/i })).toBeInTheDocument();
-        expect(screen.getByText('Region name:')).toBeInTheDocument();
+        expect(screen.getByText('Region name')).toBeInTheDocument();
         const search = screen.getByRole('searchbox', { name: /search usernames/i });
         await user.type(search, 'em');
         const suggestion = await screen.findByText('emma');
