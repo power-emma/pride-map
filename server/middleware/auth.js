@@ -45,6 +45,7 @@ async function requireAuth(req, res, next) {
       username: user.username,
       email: user.email ?? null,
       isAdmin: user.is_admin === true,
+      regionAdminIds: Array.isArray(user.region_admin_ids) ? user.region_admin_ids.map(Number) : [],
     };
     return next();
   } catch (error) {
@@ -63,6 +64,19 @@ function requireAdmin(req, res, next) {
   });
 }
 
+function requireRegionalAdmin(req, res, next) {
+  return requireAuth(req, res, () => {
+    if (!req.user.isAdmin && req.user.regionAdminIds.length === 0) {
+      return res.status(403).json({ code: 'ADMIN_REQUIRED' });
+    }
+    return next();
+  });
+}
+
+function canManageRegion(user, regionId) {
+  return user.isAdmin || user.regionAdminIds.includes(Number(regionId));
+}
+
 /**
  * SQL fragment restricting a row to the current user's own content. Admins can
  * manage everything, so they get no restriction. Pushes the user id onto
@@ -70,8 +84,14 @@ function requireAdmin(req, res, next) {
  */
 function ownershipFilter(user, params, column = 'owner_id') {
   if (user.isAdmin) return '';
+  if (user.regionAdminIds?.length) {
+    params.push(user.regionAdminIds);
+    const regionFilter = `region_id = ANY($${params.length}::int[])`;
+    params.push(user.id);
+    return ` AND (${regionFilter} OR ${column} = $${params.length})`;
+  }
   params.push(user.id);
   return ` AND ${column} = $${params.length}`;
 }
 
-module.exports = { requireAuth, requireAdmin, ownershipFilter };
+module.exports = { requireAuth, requireAdmin, requireRegionalAdmin, canManageRegion, ownershipFilter };

@@ -7,7 +7,11 @@ const pool = require('./db');
  */
 async function getUserById(id) {
   const result = await pool.query(
-    'SELECT id, username, email, is_admin, password_changed_at FROM users WHERE id = $1',
+    `SELECT id, username, email, is_admin, password_changed_at,
+            COALESCE(ARRAY(
+              SELECT region_id FROM region_admins WHERE user_id = users.id ORDER BY region_id
+            ), '{}') AS region_admin_ids
+     FROM users WHERE id = $1`,
     [id]
   );
   return result.rows[0] ?? null;

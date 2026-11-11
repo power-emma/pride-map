@@ -52,6 +52,7 @@ MIGRATIONS=(
   add-image-columns.sql
   add-image-blob-columns.sql
   add-user-accounts.sql
+  add-regions.sql
 )
 
 MODE=update

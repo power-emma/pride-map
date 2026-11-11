@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { requireAuth, requireAdmin, ownershipFilter } = require('../middleware/auth');
+const { requireAuth, requireRegionalAdmin, canManageRegion, ownershipFilter } = require('../middleware/auth');
 const { handleImageUpload } = require('../middleware/upload');
 
 function emptyToNull(value) {
@@ -23,6 +23,7 @@ function selectLocations(where = '', params = []) {
   return pool.query(`
       SELECT
         l.id,
+        l.region_id,
         l.name,
         l.name_fr,
         l.description,
@@ -40,7 +41,7 @@ function selectLocations(where = '', params = []) {
       FROM locations l
       LEFT JOIN location_categories lc ON lc.id_location = l.id
       ${where}
-      GROUP BY l.id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
+      GROUP BY l.id, l.region_id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
       ORDER BY l.name
     `, params);
 }
@@ -48,7 +49,11 @@ function selectLocations(where = '', params = []) {
 // GET all locations with their categories
 router.get('/', async (req, res) => {
   try {
-    const result = await selectLocations();
+    const regionId = Number(req.query.region_id);
+    if (!Number.isInteger(regionId) || regionId <= 0) {
+      return res.status(400).json({ code: 'INVALID_REGION_ID' });
+    }
+    const result = await selectLocations('WHERE l.region_id = $1', [regionId]);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching locations:', error);
@@ -113,10 +118,22 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
 
-    const params = [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id];
+    const regionId = req.body?.region_id === undefined ? null : Number.parseInt(req.body.region_id, 10);
+    if (regionId !== null && (!Number.isInteger(regionId) || regionId <= 0)) {
+      return res.status(400).json({ code: 'INVALID_REGION_ID' });
+    }
+    if (regionId !== null && !req.user.isAdmin && !req.user.regionAdminIds?.length) {
+      return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
+    }
+    if (regionId !== null && !canManageRegion(req.user, regionId)) {
+      return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
+    }
+
+    const params = [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id, regionId];
     const result = await pool.query(
-      `UPDATE locations SET name=$1, name_fr=$2, description=$3, description_fr=$4, address=$5, latitude=$6, longitude=$7, url=$8, image_url=$9
-       WHERE id=$10${ownershipFilter(req.user, params)} RETURNING id`,
+      `UPDATE locations SET name=$1, name_fr=$2, description=$3, description_fr=$4, address=$5, latitude=$6, longitude=$7, url=$8, image_url=$9,
+       region_id = COALESCE($11, region_id)
+       WHERE id=$10${ownershipFilter(req.user, params, 'owner_id', 'region_id')} RETURNING id`,
       params
     );
 
@@ -150,7 +167,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
     const params = [id];
     const result = await pool.query(
-      `DELETE FROM locations WHERE id = $1${ownershipFilter(req.user, params)} RETURNING id`,
+      `DELETE FROM locations WHERE id = $1${ownershipFilter(req.user, params, 'owner_id', 'region_id')} RETURNING id`,
       params
     );
     if (result.rowCount === 0) {
@@ -166,8 +183,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
 // POST a new live location — admin only. Everyone else goes through the
 // /submissions approval queue.
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requireRegionalAdmin, async (req, res) => {
   try {
+    const regionId = Number.parseInt(req.body?.region_id, 10);
     const name = emptyToNull(req.body?.name);
     if (!name) {
       return res.status(400).json({ code: 'NAME_REQUIRED' });
@@ -197,10 +215,16 @@ router.post('/', requireAdmin, async (req, res) => {
     if (categoryIds === null) {
       return res.status(400).json({ code: 'INVALID_CATEGORIES' });
     }
+    if (!Number.isInteger(regionId) || regionId <= 0) {
+      return res.status(400).json({ code: 'INVALID_REGION_ID' });
+    }
+    if (!canManageRegion(req.user, regionId)) {
+      return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
+    }
 
     const result = await pool.query(
-      'INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
-      [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl]
+      'INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, region_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
+      [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, regionId]
     );
 
     const locationId = result.rows[0]?.id;
@@ -214,6 +238,7 @@ router.post('/', requireAdmin, async (req, res) => {
 
     return res.status(201).json({
       id: locationId,
+      region_id: regionId,
       name,
       name_fr: nameFr,
       description,
@@ -267,7 +292,7 @@ router.post('/:id/image', requireAuth, handleImageUpload, async (req, res) => {
 
     const params = [req.file.buffer, req.file.mimetype, id];
     const result = await pool.query(
-      `UPDATE locations SET image_data = $1, image_mime_type = $2 WHERE id = $3${ownershipFilter(req.user, params)} RETURNING id`,
+      `UPDATE locations SET image_data = $1, image_mime_type = $2 WHERE id = $3${ownershipFilter(req.user, params, 'owner_id', 'region_id')} RETURNING id`,
       params
     );
     if (result.rowCount === 0) {
@@ -291,7 +316,7 @@ router.delete('/:id/image', requireAuth, async (req, res) => {
 
     const params = [id];
     const result = await pool.query(
-      `UPDATE locations SET image_data = NULL, image_mime_type = NULL WHERE id = $1${ownershipFilter(req.user, params)} RETURNING id`,
+      `UPDATE locations SET image_data = NULL, image_mime_type = NULL WHERE id = $1${ownershipFilter(req.user, params, 'owner_id', 'region_id')} RETURNING id`,
       params
     );
     if (result.rowCount === 0) {

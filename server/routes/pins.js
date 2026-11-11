@@ -6,7 +6,11 @@ const { generateSpoofPins, resolveSpoofCount } = require('../spoofPins');
 // Query locations from the database and convert to pin format.
 // Throws on DB error so callers can return a proper 500 instead of
 // silently returning an empty array.
-const getValidPins = async () => {
+const getValidPins = async (regionId) => {
+    const params = [];
+    const regionFilter = Number.isInteger(regionId) && regionId > 0
+        ? (params.push(regionId), 'AND l.region_id = $1')
+        : '';
     const result = await pool.query(`
         SELECT
             l.name,
@@ -25,9 +29,9 @@ const getValidPins = async () => {
         FROM locations l
         LEFT JOIN location_categories lc ON lc.id_location = l.id
         LEFT JOIN categories c ON c.id = lc.id_category
-        WHERE l.latitude IS NOT NULL AND l.longitude IS NOT NULL
+        WHERE l.latitude IS NOT NULL AND l.longitude IS NOT NULL ${regionFilter}
         GROUP BY l.id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.url, l.image_url, l.latitude, l.longitude
-    `);
+    `, params);
     return result.rows.map(location => ({
         name: location.name,
         name_fr: location.name_fr,
@@ -57,7 +61,11 @@ router.get('/all', async (req, res) => {
             return res.json(generateSpoofPins(spoofCount));
         }
 
-        const pins = await getValidPins();
+        const regionId = Number(req.query.region_id);
+        if (!Number.isInteger(regionId) || regionId <= 0) {
+            return res.status(400).json({ code: 'INVALID_REGION_ID' });
+        }
+        const pins = await getValidPins(regionId);
         res.json(pins);
     } catch (error) {
         console.error('Error in GET /pins/all:', error);

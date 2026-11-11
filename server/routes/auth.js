@@ -38,6 +38,7 @@ function publicUser(user) {
     username: user.username,
     email: user.email ?? null,
     isAdmin: user.is_admin === true,
+    regionAdminIds: Array.isArray(user.region_admin_ids) ? user.region_admin_ids.map(Number) : [],
   };
 }
 
@@ -101,7 +102,11 @@ router.post('/login', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, username, email, is_admin, password_hash FROM users WHERE username = $1',
+      `SELECT id, username, email, is_admin, password_hash,
+              COALESCE(ARRAY(
+                SELECT region_id FROM region_admins WHERE user_id = users.id ORDER BY region_id
+              ), '{}') AS region_admin_ids
+       FROM users WHERE username = $1`,
       [username]
     );
 

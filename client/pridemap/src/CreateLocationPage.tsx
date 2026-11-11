@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import CategoryCheckboxes from './components/CategoryCheckboxes';
 import i18nInstance from './i18n';
 import { localizedApiError } from './localizedApiError';
+import type { Region } from './regions';
 
 type Category = { id: number; name: string };
 
@@ -22,14 +23,17 @@ function toNullableNumber(value: string) {
 interface CreateLocationPageProps {
   /** JWT token of the signed-in submitter. */
   authToken: string;
+  selectedRegionId?: number | null;
   /** Called when the server returns 401, so App can clear the token. */
   onAuthError: () => void;
 }
 
-export default function CreateLocationPage({ authToken, onAuthError }: CreateLocationPageProps) {
+export default function CreateLocationPage({ authToken, selectedRegionId = null, onAuthError }: CreateLocationPageProps) {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [regionId, setRegionId] = useState<number | null>(selectedRegionId);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
@@ -81,12 +85,40 @@ export default function CreateLocationPage({ authToken, onAuthError }: CreateLoc
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/regions')
+      .then(async response => {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json() as Promise<Region[]>;
+      })
+      .then(list => {
+        if (cancelled) return;
+        setRegions(list);
+        setRegionId(current => list.some(region => region.id === current)
+          ? current
+          : list.find(region => region.id === selectedRegionId)?.id ?? list[0]?.id ?? null);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.error('Failed to load regions:', error);
+          setCategoriesError(i18nInstance.t('errors.network'));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [selectedRegionId]);
+
+  useEffect(() => {
+    if (selectedRegionId !== null) setRegionId(selectedRegionId);
+  }, [selectedRegionId]);
+
   const canSubmit = useMemo(() => {
     return (
       (name.trim().length > 0 || nameFr.trim().length > 0) &&
+      regionId !== null &&
       !submitting
     );
-  }, [name, nameFr, submitting]);
+  }, [name, nameFr, regionId, submitting]);
 
   async function handleGeocode() {
     const query = address.trim();
@@ -165,6 +197,7 @@ export default function CreateLocationPage({ authToken, onAuthError }: CreateLoc
       url: toNullIfEmpty(url),
       image_url: toNullIfEmpty(imageUrl),
       category_ids: categoryIds,
+      region_id: regionId,
     };
 
     setSubmitting(true);
@@ -281,6 +314,17 @@ export default function CreateLocationPage({ authToken, onAuthError }: CreateLoc
       )}
 
       <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '0.75rem' }}>
+        <label style={{ display: 'grid', gap: '0.35rem' }}>
+          <span style={{ fontWeight: 600 }}>{t('regions.regionName')}</span>
+          <select
+            required
+            value={regionId ?? ''}
+            onChange={event => setRegionId(Number(event.target.value))}
+            style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #444' }}
+          >
+            {regions.map(region => <option key={region.id} value={region.id}>{region.name}</option>)}
+          </select>
+        </label>
         <label style={{ display: 'grid', gap: '0.35rem' }}>
           <span style={{ fontWeight: 600 }}>{t('create.nameEnglish')}{nameFr.trim() ? '' : ' *'}</span>
           <input

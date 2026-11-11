@@ -176,10 +176,11 @@ const clusterPins = (pins: Pin[], map: ReturnType<typeof useMap>): ClusterEntry[
     return result;
 };
 
-const MarkerContainer = ({ categoryFilter, searchQuery = '', onMarkerSelect }: {
+const MarkerContainer = ({ categoryFilter, searchQuery = '', regionId, onMarkerSelect }: {
     selectedLocation?: {lat: number, lng: number, name: string},
     categoryFilter: string | null,
     searchQuery?: string,
+    regionId?: number | null,
     onMarkerSelect?: (lat: number, lng: number, name: string, details?: { nameFr?: string | null; categories?: string[]; description?: string | null; descriptionFr?: string | null; address?: string | null; url?: string | null; imageUrl?: string | null }) => void,
 }) => {
     const map = useMap();
@@ -189,13 +190,17 @@ const MarkerContainer = ({ categoryFilter, searchQuery = '', onMarkerSelect }: {
     const [, setViewVersion] = useState(0);
 
     useEffect(() => {
-        fetch('/api/pins/all')
+        if (regionId == null) return;
+        fetch(`/api/pins/all?region_id=${regionId}`)
         .then(response => response.json())
         .then(json => {
             setPins(json);
+            if (json.length > 0 && typeof map.fitBounds === 'function') {
+                map.fitBounds(json.map((pin: Pin) => pin.position), { padding: [40, 40], maxZoom: 14 });
+            }
         })
         .catch(error => console.error(error));
-    }, []);
+    }, [map, regionId]);
 
     useEffect(() => {
         if (typeof map.on !== 'function' || typeof map.off !== 'function') return;
@@ -217,7 +222,7 @@ const MarkerContainer = ({ categoryFilter, searchQuery = '', onMarkerSelect }: {
 
     const query = searchQuery.trim().toLowerCase();
     const isFrench = i18n.language.startsWith('fr');
-    const visiblePins = pins.filter(pin => {
+    const visiblePins = (regionId === null ? [] : pins).filter(pin => {
         const matchesCategory = !categoryFilter || pin.categories.includes(categoryFilter);
         const matchesQuery = !query || pin.name.toLowerCase().includes(query) || (pin.name_fr ?? '').toLowerCase().includes(query);
         return matchesCategory && matchesQuery;

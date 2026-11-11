@@ -20,10 +20,11 @@ const MapUpdater = ({ selectedLocation }: { selectedLocation: {lat: number, lng:
     return null;
 };
 
-const MapComponent = ({ selectedLocation, categoryFilter, searchQuery, onMarkerSelect }: {
+const MapComponent = ({ selectedLocation, categoryFilter, searchQuery, regionId, onMarkerSelect }: {
     selectedLocation?: {lat: number, lng: number, name: string} | null,
     categoryFilter?: string | null,
     searchQuery?: string,
+    regionId?: number | null,
     onMarkerSelect?: (lat: number, lng: number, name: string, details?: { nameFr?: string | null; categories?: string[]; description?: string | null; descriptionFr?: string | null; address?: string | null; url?: string | null; imageUrl?: string | null }) => void,
 }) => {
     const defaultCenter: LatLngExpression = [45.42060673930713, -75.68282689676013]; // uOttawa
@@ -56,6 +57,7 @@ const MapComponent = ({ selectedLocation, categoryFilter, searchQuery, onMarkerS
                     selectedLocation={selectedLocation || undefined}
                     categoryFilter={categoryFilter ?? null}
                     searchQuery={searchQuery ?? ''}
+                    regionId={regionId}
                     onMarkerSelect={onMarkerSelect}
                 />
                 

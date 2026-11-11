@@ -15,6 +15,7 @@ jest.mock('./userStore', () => ({
         username: id === 1 ? 'admin' : `user${id}`,
         email: `user${id}@example.com`,
         is_admin: id === 1,
+        region_admin_ids: id === 99 ? [1] : [],
         password_changed_at: null,
     })),
 }));
@@ -70,13 +71,13 @@ describe('GET /pins', () => {
     });
 
     it('should return 200 and an array of pins at /pins/all', async () => {
-        const res = await request(app).get('/pins/all');
+        const res = await request(app).get('/pins/all?region_id=1');
         expect(res.statusCode).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
     });
 
     it('each pin should have a name and a position with two coordinates', async () => {
-        const res = await request(app).get('/pins/all');
+        const res = await request(app).get('/pins/all?region_id=1');
         for (const pin of res.body) {
             expect(pin).toHaveProperty('name');
             expect(pin).toHaveProperty('position');
@@ -116,7 +117,7 @@ describe('GET /pins/all — spoof test mode', () => {
     it('honours the PIN_SPOOF_COUNT env var', async () => {
         process.env.PIN_SPOOF_COUNT = '42';
         try {
-            const res = await request(app).get('/pins/all');
+            const res = await request(app).get('/pins/all?region_id=1');
             expect(res.body).toHaveLength(42);
             expect(pool.query).not.toHaveBeenCalled();
         } finally {
@@ -125,7 +126,7 @@ describe('GET /pins/all — spoof test mode', () => {
     });
 
     it('falls back to the database when spoofing is off', async () => {
-        const res = await request(app).get('/pins/all');
+        const res = await request(app).get('/pins/all?region_id=1');
         expect(res.statusCode).toBe(200);
         expect(pool.query).toHaveBeenCalled();
     });
@@ -133,14 +134,14 @@ describe('GET /pins/all — spoof test mode', () => {
 
 describe('GET /cards', () => {
     it('should return 200 and an array of all cards', async () => {
-        const res = await request(app).get('/cards');
+        const res = await request(app).get('/cards?region_id=1');
         expect(res.statusCode).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
         expect(res.body.length).toBeGreaterThan(0);
     });
 
     it('each card should have the expected fields', async () => {
-        const res = await request(app).get('/cards');
+        const res = await request(app).get('/cards?region_id=1');
         for (const card of res.body) {
             expect(card).toHaveProperty('name');
             expect(card).toHaveProperty('description');
@@ -152,7 +153,7 @@ describe('GET /cards', () => {
     });
 
     it('should return 200 and only cards with coordinates at /cards/with-location', async () => {
-        const res = await request(app).get('/cards/with-location');
+        const res = await request(app).get('/cards/with-location?region_id=1');
         expect(res.statusCode).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
         expect(res.body.length).toBeGreaterThan(0);
@@ -165,22 +166,36 @@ describe('GET /cards', () => {
     });
 
     it('/cards/with-location should return a subset of /cards', async () => {
-        const allCards = (await request(app).get('/cards')).body;
-        const locatedCards = (await request(app).get('/cards/with-location')).body;
+        const allCards = (await request(app).get('/cards?region_id=1')).body;
+        const locatedCards = (await request(app).get('/cards/with-location?region_id=1')).body;
         expect(locatedCards.length).toBeLessThanOrEqual(allCards.length);
     });
 });
 
 describe('GET /locations', () => {
+    it('requires a region to prevent cross-region browsing', async () => {
+        const responses = await Promise.all([
+            request(app).get('/locations'),
+            request(app).get('/cards'),
+            request(app).get('/cards/with-location'),
+            request(app).get('/events'),
+            request(app).get('/pins/all'),
+        ]);
+        for (const res of responses) {
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toEqual({ code: 'INVALID_REGION_ID' });
+        }
+    });
+
     it('should return 200 and an array of all locations', async () => {
-        const res = await request(app).get('/locations');
+        const res = await request(app).get('/locations?region_id=1');
         expect(res.statusCode).toBe(200);
         expect(Array.isArray(res.body)).toBe(true);
         expect(res.body.length).toBeGreaterThan(0);
     });
 
     it('each location should have the expected fields', async () => {
-        const res = await request(app).get('/locations');
+        const res = await request(app).get('/locations?region_id=1');
         for (const loc of res.body) {
             expect(loc).toHaveProperty('name');
             expect(loc).toHaveProperty('description');
@@ -200,7 +215,7 @@ describe('POST /locations', () => {
         const res = await request(app)
             .post('/locations')
             .set('Authorization', `Bearer ${makeToken()}`)
-            .send({ name: 'New Place', category_ids: [] });
+            .send({ name: 'New Place', category_ids: [], region_id: 1 });
         expect(res.statusCode).toBe(201);
         expect(res.body).toHaveProperty('id', 99);
         expect(res.body).toHaveProperty('name', 'New Place');
@@ -317,6 +332,7 @@ describe('Events', () => {
         description_fr: 'Une célébration communautaire.',
         event_date: '2030-06-20',
         city: 'Ottawa',
+        region_id: 1,
     };
 
     it('returns a stable code when required event title is missing', async () => {
@@ -341,7 +357,7 @@ describe('Events', () => {
             rowCount: 1,
         });
 
-        const res = await request(app).get('/events');
+        const res = await request(app).get('/events?region_id=1');
 
         expect(res.statusCode).toBe(200);
         expect(res.body[0]).toMatchObject({
@@ -380,6 +396,7 @@ describe('Events', () => {
             null,
             null,
             null,
+            1,
         ]);
     });
 
@@ -412,6 +429,7 @@ describe('Events', () => {
             'Ottawa',
             null,
             null,
+            1,
             12,
         ]);
     });
@@ -421,6 +439,7 @@ describe('Submissions', () => {
     const validBody = {
         name: 'Rainbow Cafe',
         category_ids: [],
+        region_id: 1,
     };
 
     describe('POST /submissions (signed-in users)', () => {
@@ -477,6 +496,7 @@ describe('Submissions', () => {
                     name_fr: 'Café arc-en-ciel',
                     description_fr: 'Un espace communautaire.',
                     category_ids: [],
+                    region_id: 1,
                 });
 
             expect(res.statusCode).toBe(201);
@@ -493,6 +513,7 @@ describe('Submissions', () => {
                 'user23@example.com',
                 [],
                 23,
+                1,
             ]);
         });
     });
@@ -506,10 +527,11 @@ describe('Submissions', () => {
                 .send({ name: 'Mine', submitter_email: 'ignored@example.com' });
             expect(res.statusCode).toBe(200);
             const [sql, params] = pool.query.mock.calls[0];
-            expect(sql).toContain('AND user_id = $13');
+            expect(sql).toContain('AND user_id = $14');
             // Only admins can change the contact email.
             expect(params[9]).toBeNull();
-            expect(params[12]).toBe(24);
+            expect(params[12]).toBeNull();
+            expect(params[13]).toBe(24);
         });
 
         it('DELETE /submissions/:id withdraws the submitter\'s own pending row', async () => {
@@ -634,8 +656,9 @@ describe('Ownership', () => {
             .send({ name: 'Not mine', category_ids: [] });
         expect(res.statusCode).toBe(404);
         const [sql, params] = pool.query.mock.calls[0];
-        expect(sql).toContain('AND owner_id = $11');
-        expect(params[10]).toBe(30);
+        expect(sql).toContain('AND owner_id = $12');
+        expect(params[10]).toBeNull();
+        expect(params[11]).toBe(30);
     });
 
     it('PUT /locations/:id lets admins edit any location', async () => {
@@ -652,9 +675,9 @@ describe('Ownership', () => {
         const res = await request(app)
             .post('/events')
             .set('Authorization', `Bearer ${makeToken(31)}`)
-            .send({ title: 'Picnic', event_date: '2030-06-20' });
+            .send({ title: 'Picnic', event_date: '2030-06-20', region_id: 1 });
         expect(res.statusCode).toBe(201);
-        expect(pool.query.mock.calls[0][1].at(-1)).toBe(31);
+        expect(pool.query.mock.calls[0][1].at(-2)).toBe(31);
     });
 
     it('POST /events rejects linking to a business the user does not own', async () => {
@@ -662,9 +685,80 @@ describe('Ownership', () => {
         const res = await request(app)
             .post('/events')
             .set('Authorization', `Bearer ${makeToken(31)}`)
-            .send({ title: 'Picnic', event_date: '2030-06-20', location_id: 2 });
+            .send({ title: 'Picnic', event_date: '2030-06-20', location_id: 2, region_id: 1 });
         expect(res.statusCode).toBe(400);
         expect(res.body).toHaveProperty('code', 'LINKED_LOCATION_NOT_FOUND');
+    });
+
+    describe('Regions', () => {
+        it('requires a global administrator to create a region', async () => {
+            const res = await request(app)
+                .post('/regions')
+                .set('Authorization', `Bearer ${makeToken(2)}`)
+                .send({ name: 'Kingston' });
+            expect(res.statusCode).toBe(403);
+        });
+
+        it('limits regional admins to their assigned regions', async () => {
+            const res = await request(app)
+                .get('/regions/2/admins')
+                .set('Authorization', `Bearer ${makeToken(99)}`);
+            expect(res.statusCode).toBe(403);
+            expect(res.body).toHaveProperty('code', 'REGION_ADMIN_REQUIRED');
+        });
+
+        it('lists only admins assigned to the requested region', async () => {
+            const res = await request(app)
+                .get('/regions/2/admins')
+                .set('Authorization', 'Bearer ' + makeToken());
+            expect(res.statusCode).toBe(200);
+            expect(res.headers['cache-control']).toBe('no-store');
+            expect(pool.query).toHaveBeenCalledTimes(2);
+            expect(pool.query.mock.calls[1][0]).toContain(
+                'JOIN region_admins ra ON ra.user_id = u.id AND ra.region_id = $1'
+            );
+            expect(pool.query.mock.calls[1][1]).toEqual([2]);
+        });
+
+        it('removes only the selected user from the selected region', async () => {
+            const res = await request(app)
+                .delete('/regions/2/admins/42')
+                .set('Authorization', 'Bearer ' + makeToken());
+            expect(res.statusCode).toBe(204);
+            expect(pool.query).toHaveBeenCalledTimes(1);
+            expect(pool.query.mock.calls[0][0]).toBe(
+                'DELETE FROM region_admins WHERE region_id = $1 AND user_id = $2 RETURNING user_id'
+            );
+            expect(pool.query.mock.calls[0][1]).toEqual([2, 42]);
+        });
+
+        it('treats removing an already-unassigned regional admin as successful', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+            const res = await request(app)
+                .delete('/regions/2/admins/42')
+                .set('Authorization', 'Bearer ' + makeToken());
+            expect(res.statusCode).toBe(204);
+            expect(pool.query.mock.calls[0][1]).toEqual([2, 42]);
+        });
+
+        it('requires a username query before searching for regional admins', async () => {
+            const res = await request(app)
+                .get('/regions/1/admins/search')
+                .set('Authorization', 'Bearer ' + makeToken(99));
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toHaveProperty('code', 'ADMIN_SEARCH_QUERY_REQUIRED');
+            expect(pool.query).not.toHaveBeenCalled();
+        });
+
+        it('searches users for regional admin suggestions with a five-user cap', async () => {
+            const res = await request(app)
+                .get('/regions/1/admins/search?q=an')
+                .set('Authorization', 'Bearer ' + makeToken(99));
+            expect(res.statusCode).toBe(200);
+            expect(pool.query).toHaveBeenCalledTimes(2);
+            expect(pool.query.mock.calls[1][0]).toContain('LIMIT 5');
+            expect(pool.query.mock.calls[1][1]).toEqual([1, 'an']);
+        });
     });
 
     it('GET /events/all is admin only', async () => {

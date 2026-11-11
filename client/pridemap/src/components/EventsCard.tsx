@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import '../i18n';
 import { useTranslation } from 'react-i18next';
-import { CITY_NAME } from '../config';
 
 type Event = {
   id: number;
@@ -37,11 +36,11 @@ function formatEventDate(event: Event, locale: string): string {
   return `${dateLabel} · ${timeLabel}`;
 }
 
-const EventsCard = () => {
+const EventsCard = ({ regionId, regionName }: { regionId: number | null; regionName: string }) => {
   const { t, i18n } = useTranslation();
   const locale = i18n.language.startsWith('fr') ? 'fr-CA' : 'en-CA';
   const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedRegionId, setLoadedRegionId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   // Only has a visible effect on mobile, where the toggle button is shown.
   const [collapsed, setCollapsed] = useState(() => {
@@ -65,17 +64,18 @@ const EventsCard = () => {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/events?city=${encodeURIComponent(CITY_NAME)}&limit=3`)
+    if (regionId == null) return;
+    fetch(`/api/events?region_id=${regionId}&limit=3`)
       .then(res => res.json())
       .then((json: Event[]) => {
-        if (!cancelled) setEvents(json);
+        if (!cancelled) {
+          setEvents(json);
+          setLoadedRegionId(regionId);
+        }
       })
       .catch(error => console.error('Error loading events:', error))
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
     return () => { cancelled = true; };
-  }, []);
+  }, [regionId]);
 
   // Close the modal on Escape.
   useEffect(() => {
@@ -87,7 +87,7 @@ const EventsCard = () => {
     return () => document.removeEventListener('keydown', handleKey);
   }, [activeEvent]);
 
-  if (loading || events.length === 0) return null;
+  if (regionId === null || loadedRegionId !== regionId || events.length === 0) return null;
   const localizeEvent = (event: Event) => ({
     title: locale.startsWith('fr') ? event.title_fr || event.title : event.title,
     description: locale.startsWith('fr') ? event.description_fr || event.description : event.description,
@@ -96,10 +96,10 @@ const EventsCard = () => {
   return (
     <aside
       className={`events-card${collapsed ? ' events-card--collapsed' : ''}`}
-      aria-label={t('events.upcoming', { city: CITY_NAME })}
+      aria-label={t('events.upcoming', { city: regionName })}
     >
       <div className="events-card__header">
-        <h2 className="events-card__title">{t('events.happening', { city: CITY_NAME })}</h2>
+        <h2 className="events-card__title">{t('events.happening', { city: regionName })}</h2>
         <button
           type="button"
           className="events-card__toggle"
