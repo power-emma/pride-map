@@ -33,6 +33,7 @@ const submissionsRoute = require('./routes/submissions');
 const eventsRoute = require('./routes/events');
 const usersRoute = require('./routes/users');
 const regionsRoute = require('./routes/regions');
+const publicApiRoute = require('./routes/publicApi');
 
 app.use('/pins', pinsRoute);
 app.use('/cards', cardsRoute);
@@ -43,6 +44,7 @@ app.use('/submissions', submissionsRoute);
 app.use('/events', eventsRoute);
 app.use('/users', usersRoute);
 app.use('/regions', regionsRoute);
+app.use('/v1', publicApiRoute);
 
 // Catch-all Express error handler — fires when a route calls next(err) or
 // when an async route throws without a try/catch. Returns JSON 500 instead

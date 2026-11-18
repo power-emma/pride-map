@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db');
 const { requireAuth, requireRegionalAdmin, canManageRegion, ownershipFilter } = require('../middleware/auth');
 const { handleImageUpload } = require('../middleware/upload');
+const { parsePublicFields } = require('../publicFields');
 
 function emptyToNull(value) {
   if (value === undefined || value === null) return null;
@@ -48,6 +49,7 @@ router.get('/', async (req, res) => {
       `SELECT
          e.id, e.title, e.title_fr, e.description, e.description_fr, e.event_date, e.event_time,
          e.location, e.city, e.url, e.region_id,
+         e.tags,
          CASE
            WHEN e.image_data IS NOT NULL THEN '/api/events/' || e.id || '/image'
            WHEN e.image_url IS NOT NULL THEN e.image_url
@@ -76,6 +78,7 @@ function selectManagedEvents(where = '', params = []) {
     `SELECT
        e.id, e.title, e.title_fr, e.description, e.description_fr, e.event_date, e.event_time,
        e.location, e.location_id, e.city, e.url, e.image_url, e.region_id, e.created_at,
+       e.tags, e.updated_at,
        (e.image_data IS NOT NULL) AS has_image,
        l.name AS location_name, l.image_url AS location_image_url,
        (l.image_data IS NOT NULL) AS location_has_image
@@ -148,7 +151,10 @@ function validateEventBody(body) {
   const regionId = parseNullableId(body?.region_id);
   if (!Number.isInteger(regionId) || regionId <= 0) return { code: 'INVALID_REGION_ID' };
 
-  return { value: { title: displayTitle, titleFr, description, descriptionFr, eventDate, eventTime, location, locationId, city, url, imageUrl, regionId } };
+  const publicFields = parsePublicFields(body, false);
+  if (publicFields.error) return { code: publicFields.error };
+
+  return { value: { title: displayTitle, titleFr, description, descriptionFr, eventDate, eventTime, location, locationId, city, url, imageUrl, regionId, tags: publicFields.fields.tags } };
 }
 
 // Non-admins may only link an event to a business they own. Anything else is
@@ -179,10 +185,10 @@ router.post('/', requireAuth, async (req, res) => {
 
     const ownerId = canManageRegion(req.user, value.regionId) ? null : req.user.id;
     const result = await pool.query(
-      `INSERT INTO events (title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, owner_id, region_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       RETURNING id, title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, region_id, created_at`,
-      [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, ownerId, value.regionId]
+      `INSERT INTO events (title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, owner_id, region_id, tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       RETURNING id, title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, region_id, tags, created_at, updated_at`,
+      [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, ownerId, value.regionId, value.tags ?? []]
     );
 
     return res.status(201).json(result.rows[0]);
@@ -212,14 +218,14 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ code: 'LINKED_LOCATION_NOT_FOUND' });
     }
 
-    const params = [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, value.regionId, id];
+    const params = [value.title, value.titleFr, value.description, value.descriptionFr, value.eventDate, value.eventTime, value.location, value.locationId, value.city, value.url, value.imageUrl, value.regionId, id, value.tags ?? null];
     const result = await pool.query(
       `UPDATE events
          SET title=$1, title_fr=$2, description=$3, description_fr=$4,
              event_date=$5, event_time=$6, location=$7, location_id=$8,
-             city=$9, url=$10, image_url=$11, region_id=$12
+             city=$9, url=$10, image_url=$11, region_id=$12, tags=COALESCE($14, tags)
        WHERE id=$13${ownershipFilter(req.user, params, 'owner_id', 'region_id')}
-       RETURNING id, title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, region_id, created_at`,
+       RETURNING id, title, title_fr, description, description_fr, event_date, event_time, location, location_id, city, url, image_url, region_id, tags, created_at, updated_at`,
       params
     );
 

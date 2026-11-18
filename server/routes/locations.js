@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../db');
 const { requireAuth, requireRegionalAdmin, canManageRegion, ownershipFilter } = require('../middleware/auth');
 const { handleImageUpload } = require('../middleware/upload');
+const { parsePublicFields } = require('../publicFields');
 
 function emptyToNull(value) {
   if (value === undefined || value === null) return null;
@@ -32,6 +33,11 @@ function selectLocations(where = '', params = []) {
         l.latitude::float8 AS latitude,
         l.longitude::float8 AS longitude,
         l.url,
+        l.contact_email,
+        l.contact_phone,
+        l.hours,
+        l.tags,
+        l.updated_at,
         l.image_url,
         (l.image_data IS NOT NULL) AS has_image,
         COALESCE(
@@ -41,7 +47,7 @@ function selectLocations(where = '', params = []) {
       FROM locations l
       LEFT JOIN location_categories lc ON lc.id_location = l.id
       ${where}
-      GROUP BY l.id, l.region_id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.image_url
+      GROUP BY l.id, l.region_id, l.name, l.name_fr, l.description, l.description_fr, l.address, l.latitude, l.longitude, l.url, l.contact_email, l.contact_phone, l.hours, l.tags, l.updated_at, l.image_url
       ORDER BY l.name
     `, params);
 }
@@ -99,6 +105,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
+    const publicFields = parsePublicFields(req.body);
+    if (publicFields.error) return res.status(400).json({ code: publicFields.error });
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -129,10 +137,20 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
     }
 
-    const params = [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id, regionId];
+    const params = [
+      name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, id, regionId,
+      publicFields.fields.contact_email !== undefined, publicFields.fields.contact_email ?? null,
+      publicFields.fields.contact_phone !== undefined, publicFields.fields.contact_phone ?? null,
+      publicFields.fields.hours !== undefined, publicFields.fields.hours ?? null,
+      publicFields.fields.tags !== undefined, publicFields.fields.tags ?? [],
+    ];
     const result = await pool.query(
       `UPDATE locations SET name=$1, name_fr=$2, description=$3, description_fr=$4, address=$5, latitude=$6, longitude=$7, url=$8, image_url=$9,
-       region_id = COALESCE($11, region_id)
+       region_id = COALESCE($11, region_id),
+       contact_email = CASE WHEN $12 THEN $13 ELSE contact_email END,
+       contact_phone = CASE WHEN $14 THEN $15 ELSE contact_phone END,
+       hours = CASE WHEN $16 THEN $17 ELSE hours END,
+       tags = CASE WHEN $18 THEN $19 ELSE tags END
        WHERE id=$10${ownershipFilter(req.user, params, 'owner_id', 'region_id')} RETURNING id`,
       params
     );
@@ -197,6 +215,8 @@ router.post('/', requireRegionalAdmin, async (req, res) => {
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
+    const publicFields = parsePublicFields(req.body);
+    if (publicFields.error) return res.status(400).json({ code: publicFields.error });
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -223,8 +243,15 @@ router.post('/', requireRegionalAdmin, async (req, res) => {
     }
 
     const result = await pool.query(
-      'INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, region_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
-      [name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, regionId]
+      `INSERT INTO locations
+         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
+          region_id, contact_email, contact_phone, hours, tags)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+      [
+        name, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl,
+        regionId, publicFields.fields.contact_email ?? null, publicFields.fields.contact_phone ?? null,
+        publicFields.fields.hours ?? null, publicFields.fields.tags ?? [],
+      ]
     );
 
     const locationId = result.rows[0]?.id;

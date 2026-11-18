@@ -12,6 +12,14 @@ function parseName(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function regionSlug(value) {
+  return value.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query('SELECT id, name FROM regions ORDER BY LOWER(name), id');
@@ -42,10 +50,12 @@ router.get('/manage', requireRegionalAdmin, async (req, res) => {
 router.post('/', requireAdmin, async (req, res) => {
   const name = parseName(req.body?.name);
   if (!name) return res.status(400).json({ code: 'REGION_NAME_REQUIRED' });
+  const slug = regionSlug(name);
+  if (!slug) return res.status(400).json({ code: 'INVALID_REGION_NAME' });
   try {
     const result = await pool.query(
-      'INSERT INTO regions (name) VALUES ($1) RETURNING id, name',
-      [name]
+      'INSERT INTO regions (name, slug) VALUES ($1, $2) RETURNING id, name, slug',
+      [name, slug]
     );
     return res.status(201).json(result.rows[0]);
   } catch (error) {

@@ -28,7 +28,7 @@ Client:
 - Connects to rest API via nginx proxy at /api
 
 Database:
-- Postgres - Work in Progress
+- PostgreSQL - source of truth for locations, events, categories, and regions
   
 ## Accounts and Submissions
 
@@ -68,10 +68,11 @@ applies every migration in one transaction, and checks that no rows were lost.
 To undo the database change: `./update.sh --rollback backups/pre-update_<timestamp>.dump`.
 The migrations add Ottawa and Toronto regions and assign existing locations,
 events, and pending submissions to Ottawa, except the FrancoQueer and Human
-Rights Legal Support Centre locations, which are assigned to Toronto.
+Rights Legal Support Centre locations, which are assigned to Toronto. They also
+add the public data API schema and stable region slugs.
 
-To bring an existing database up to date for French content, event links, and
-image uploads, run the migrations in this order:
+To bring an existing database up to date manually, run the migrations in this
+order:
 
 ```
 psql -U pridemap -d pridemap -f server/add-french-location-content.sql
@@ -80,6 +81,7 @@ psql -U pridemap -d pridemap -f server/add-french-event-content.sql
 psql -U pridemap -d pridemap -f server/add-image-columns.sql
 psql -U pridemap -d pridemap -f server/add-image-blob-columns.sql
 psql -U pridemap -d pridemap -f server/add-regions.sql
+psql -U pridemap -d pridemap -f server/add-public-data-api.sql
 ```
 
 Existing names and descriptions remain the English content; French fields are
@@ -87,6 +89,10 @@ optional and the website falls back to English when a French translation is
 not available. `setup-db.sh` applies these migrations automatically and checks
 that the required columns exist before reporting success.
 
-## Initial Release Plans
-- Now hosting initial map with client data
-- Next significant release will include CRUD using an SQL database
+## Public data API
+
+The versioned, read-only API exposes organizations, events, and regions as
+structured JSON, plus full CSV downloads. The production API base is
+`/api/v1`; see the [Public Data API documentation](./docs/public-api.md) for
+response schemas, filters, pagination, CSV behavior, cache validation, and
+error codes.
