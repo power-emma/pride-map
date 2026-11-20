@@ -397,6 +397,7 @@ describe('Events', () => {
             null,
             null,
             1,
+            [],
         ]);
     });
 
@@ -417,6 +418,8 @@ describe('Events', () => {
             title_fr: 'Fête de la fierté',
             description_fr: 'Une célébration communautaire.',
         });
+        expect(pool.query.mock.calls[0][0]).toContain('tags=COALESCE($14, tags)');
+        expect(pool.query.mock.calls[0][1][13]).toBeNull();
         expect(pool.query.mock.calls[0][1]).toEqual([
             'Pride celebration',
             'Fête de la fierté',
@@ -431,6 +434,7 @@ describe('Events', () => {
             null,
             1,
             12,
+            null,
         ]);
     });
 });
@@ -510,6 +514,10 @@ describe('Submissions', () => {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                [],
                 'user23@example.com',
                 [],
                 23,
@@ -527,11 +535,11 @@ describe('Submissions', () => {
                 .send({ name: 'Mine', submitter_email: 'ignored@example.com' });
             expect(res.statusCode).toBe(200);
             const [sql, params] = pool.query.mock.calls[0];
-            expect(sql).toContain('AND user_id = $14');
+            expect(sql).toContain('AND user_id = $22');
             // Only admins can change the contact email.
             expect(params[9]).toBeNull();
             expect(params[12]).toBeNull();
-            expect(params[13]).toBe(24);
+            expect(params[21]).toBe(24);
         });
 
         it('DELETE /submissions/:id withdraws the submitter\'s own pending row', async () => {
@@ -656,9 +664,9 @@ describe('Ownership', () => {
             .send({ name: 'Not mine', category_ids: [] });
         expect(res.statusCode).toBe(404);
         const [sql, params] = pool.query.mock.calls[0];
-        expect(sql).toContain('AND owner_id = $12');
+        expect(sql).toContain('AND owner_id = $20');
         expect(params[10]).toBeNull();
-        expect(params[11]).toBe(30);
+        expect(params[19]).toBe(30);
     });
 
     it('PUT /locations/:id lets admins edit any location', async () => {
@@ -677,7 +685,7 @@ describe('Ownership', () => {
             .set('Authorization', `Bearer ${makeToken(31)}`)
             .send({ title: 'Picnic', event_date: '2030-06-20', region_id: 1 });
         expect(res.statusCode).toBe(201);
-        expect(pool.query.mock.calls[0][1].at(-2)).toBe(31);
+        expect(pool.query.mock.calls[0][1].at(-3)).toBe(31);
     });
 
     it('POST /events rejects linking to a business the user does not own', async () => {
@@ -774,6 +782,136 @@ describe('Accounts', () => {
         const legacy = jwt.sign({ username: 'old-admin' }, TEST_JWT_SECRET, { expiresIn: '1h' });
         const res = await request(app).get('/auth/me').set('Authorization', `Bearer ${legacy}`);
         expect(res.statusCode).toBe(401);
+    });
+
+    describe('Public data API v1', () => {
+        it('returns versioned organization records with pagination and conditional-cache headers', async () => {
+            pool.query
+                .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Ottawa', slug: 'ottawa' }] })
+                .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+                .mockResolvedValueOnce({
+                    rows: [{
+                        id: 42, name: 'Example Organization', name_fr: null,
+                        description: 'A service', description_fr: null,
+                        region_id: 1, region_slug: 'ottawa', region_name: 'Ottawa',
+                        address: '123 Main St', latitude: '45.42', longitude: '-75.69',
+                        url: 'https://example.org', contact_email: null, contact_phone: '555-0100',
+                        hours: null, categories: ['Community Organisations'], tags: ['youth'],
+                        updated_at: '2026-11-18T15:00:00.000Z',
+                    }],
+                });
+
+            const res = await request(app).get('/v1/organizations?region=ottawa&limit=20&offset=5');
+
+            expect(res.statusCode).toBe(200);
+            expect(res.headers['cache-control']).toBe('public, max-age=60');
+            expect(res.headers.etag).toBeDefined();
+            expect(res.body.pagination).toEqual({ limit: 20, offset: 5, total: 1 });
+            expect(res.body.data[0]).toMatchObject({
+                id: 42,
+                region: { slug: 'ottawa', name: 'Ottawa' },
+                coordinates: { latitude: 45.42, longitude: -75.69 },
+                contact: { email: null, phone: '555-0100' },
+                categories: ['Community Organisations'],
+                tags: ['youth'],
+            });
+            expect(pool.query.mock.calls[2][1]).toEqual([1, 20, 5]);
+
+            pool.query
+                .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Ottawa', slug: 'ottawa' }] })
+                .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+                .mockResolvedValueOnce({
+                    rows: [{
+                        id: 42, name: 'Example Organization', name_fr: null,
+                        description: 'A service', description_fr: null,
+                        region_id: 1, region_slug: 'ottawa', region_name: 'Ottawa',
+                        address: '123 Main St', latitude: '45.42', longitude: '-75.69',
+                        url: 'https://example.org', contact_email: null, contact_phone: '555-0100',
+                        hours: null, categories: ['Community Organisations'], tags: ['youth'],
+                        updated_at: '2026-11-18T15:00:00.000Z',
+                    }],
+                });
+            const cached = await request(app)
+                .get('/v1/organizations?region=ottawa&limit=20&offset=5')
+                .set('If-None-Match', res.headers.etag);
+            expect(cached.statusCode).toBe(304);
+        });
+
+        it('exports all matching organizations as correctly escaped CSV', async () => {
+            pool.query
+                .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Ottawa', slug: 'ottawa' }] })
+                .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+                .mockResolvedValueOnce({
+                    rows: [{
+                        id: 42, name: 'Example, "Community"', name_fr: null,
+                        description: '=HYPERLINK("https://example.org")', description_fr: null,
+                        region_id: 1, region_slug: 'ottawa', region_name: 'Ottawa',
+                        address: null, latitude: null, longitude: null, url: null,
+                        contact_email: null, contact_phone: null, hours: null,
+                        categories: [], tags: [], updated_at: '2026-11-18T15:00:00.000Z',
+                    }],
+                });
+
+            const res = await request(app).get('/v1/organizations.csv?region=ottawa');
+
+            expect(res.statusCode).toBe(200);
+            expect(res.headers['content-type']).toContain('text/csv');
+            expect(res.headers['content-disposition']).toContain('pride-map-organizations.csv');
+            expect(res.text).toContain('"Example, ""Community"""');
+            expect(res.text).toContain(`"'=HYPERLINK(""https://example.org"")"`);
+            expect(pool.query.mock.calls[2][0]).not.toContain('LIMIT');
+        });
+
+        it('returns all events by default and supports an upcoming-only filter', async () => {
+            pool.query
+                .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Ottawa', slug: 'ottawa' }] })
+                .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+                .mockResolvedValueOnce({
+                    rows: [{
+                        id: 18, title: 'Gathering', title_fr: null, description: null,
+                        description_fr: null, region_id: 1, region_slug: 'ottawa',
+                        region_name: 'Ottawa', event_date: '2026-12-01', event_time: null,
+                        location: 'Community Hall', location_id: null, city: 'Ottawa',
+                        url: null, tags: ['social'], updated_at: '2026-11-18T15:00:00.000Z',
+                    }],
+                });
+
+            const res = await request(app).get('/v1/events?region=ottawa&upcoming=true');
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body.data[0]).toMatchObject({
+                start_date: '2026-12-01',
+                location_id: null,
+                tags: ['social'],
+            });
+            expect(pool.query.mock.calls[1][0]).toContain('e.event_date >= CURRENT_DATE');
+            expect(pool.query.mock.calls[1][1]).toEqual([1, 100, 0]);
+        });
+
+        it('rejects invalid region slugs and unknown regions', async () => {
+            const malformed = await request(app).get('/v1/organizations?region=Ottawa');
+            expect(malformed.statusCode).toBe(400);
+            expect(malformed.body).toEqual({ code: 'INVALID_REGION' });
+            expect(pool.query).not.toHaveBeenCalled();
+
+            pool.query.mockResolvedValueOnce({ rows: [] });
+            const unknown = await request(app).get('/v1/events?region=nowhere');
+            expect(unknown.statusCode).toBe(404);
+            expect(unknown.body).toEqual({ code: 'REGION_NOT_FOUND' });
+        });
+
+        it('validates structured hours on location writes', async () => {
+            const res = await request(app)
+                .put('/locations/1')
+                .set('Authorization', 'Bearer ' + makeToken())
+                .send({
+                    name: 'Example Organization',
+                    hours: { monday: [{ opens: '9am', closes: '17:00' }] },
+                });
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toEqual({ code: 'INVALID_HOURS' });
+            expect(pool.query).not.toHaveBeenCalled();
+        });
     });
 
     it('GET /auth/me returns the signed-in account', async () => {

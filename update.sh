@@ -53,6 +53,7 @@ MIGRATIONS=(
   add-image-blob-columns.sql
   add-user-accounts.sql
   add-regions.sql
+  add-public-data-api.sql
 )
 
 MODE=update

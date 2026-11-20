@@ -4,6 +4,7 @@ const pool = require('../db');
 const { requireAuth, requireRegionalAdmin, canManageRegion, ownershipFilter } = require('../middleware/auth');
 const { createRateLimiter, rejectIfLimited } = require('../middleware/rateLimit');
 const { handleImageUpload } = require('../middleware/upload');
+const { parsePublicFields } = require('../publicFields');
 
 // ---------------------------------------------------------------------------
 // Validation helpers (mirrors the ones in routes/locations.js)
@@ -45,7 +46,8 @@ const submissionLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 10 
 const SUBMISSION_COLUMNS = `
   s.id, s.name, s.name_fr, s.description, s.description_fr, s.address,
   s.latitude::float8 AS latitude, s.longitude::float8 AS longitude,
-  s.url, s.image_url, (s.image_data IS NOT NULL) AS has_image,
+  s.url, s.contact_email, s.contact_phone, s.hours, s.tags,
+  s.image_url, (s.image_data IS NOT NULL) AS has_image,
   s.submitter_email, s.category_ids, s.status, s.created_at, s.reviewed_at, s.region_id`;
 
 // ---------------------------------------------------------------------------
@@ -69,6 +71,8 @@ router.post('/', requireAuth, async (req, res) => {
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
+    const publicFields = parsePublicFields(req.body);
+    if (publicFields.error) return res.status(400).json({ code: publicFields.error });
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -95,10 +99,16 @@ router.post('/', requireAuth, async (req, res) => {
     // account's, so admins can still reach the submitter if it changes later.
     const result = await pool.query(
       `INSERT INTO submissions
-         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, submitter_email, category_ids, user_id, status, region_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13)
+         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
+          contact_email, contact_phone, hours, tags, submitter_email, category_ids, user_id, status, region_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pending', $17)
        RETURNING id`,
-      [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, req.user.email, categoryIds, req.user.id, regionId]
+      [
+        submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl,
+        publicFields.fields.contact_email ?? null, publicFields.fields.contact_phone ?? null,
+        publicFields.fields.hours ?? null, publicFields.fields.tags ?? [], req.user.email,
+        categoryIds, req.user.id, regionId,
+      ]
     );
 
     submissionLimiter.record(req.user.id);
@@ -211,6 +221,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     const address = emptyToNull(req.body?.address);
     const url = emptyToNull(req.body?.url);
     const imageUrl = emptyToNull(req.body?.image_url);
+    const publicFields = parsePublicFields(req.body);
+    if (publicFields.error) return res.status(400).json({ code: publicFields.error });
 
     const latitude = parseNullableFloat(req.body?.latitude);
     const longitude = parseNullableFloat(req.body?.longitude);
@@ -236,17 +248,29 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ code: 'REGION_ADMIN_REQUIRED' });
     }
 
-    const params = [submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl, submitterEmail?.trim() ?? null, categoryIds, id, regionId];
+    const params = [
+      submittedName, nameFr, description, descriptionFr, address, latitude, longitude, url, imageUrl,
+      submitterEmail?.trim() ?? null, categoryIds, id, regionId,
+      publicFields.fields.contact_email !== undefined, publicFields.fields.contact_email ?? null,
+      publicFields.fields.contact_phone !== undefined, publicFields.fields.contact_phone ?? null,
+      publicFields.fields.hours !== undefined, publicFields.fields.hours ?? null,
+      publicFields.fields.tags !== undefined, publicFields.fields.tags ?? [],
+    ];
     const result = await pool.query(
       `UPDATE submissions
          SET name = $1, name_fr = $2, description = $3, description_fr = $4,
              address = $5, latitude = $6, longitude = $7, url = $8,
              image_url = $9, submitter_email = COALESCE($10, submitter_email), category_ids = $11,
-             region_id = COALESCE($13, region_id)
+             region_id = COALESCE($13, region_id),
+             contact_email = CASE WHEN $14 THEN $15 ELSE contact_email END,
+             contact_phone = CASE WHEN $16 THEN $17 ELSE contact_phone END,
+             hours = CASE WHEN $18 THEN $19 ELSE hours END,
+             tags = CASE WHEN $20 THEN $21 ELSE tags END
        WHERE id = $12 AND status = 'pending'${ownershipFilter(req.user, params, 'user_id', 'region_id')}
        RETURNING id, name, name_fr, description, description_fr, address,
                  latitude::float8 AS latitude, longitude::float8 AS longitude,
-                 url, image_url, submitter_email, category_ids, status, created_at`,
+                 url, contact_email, contact_phone, hours, tags, image_url,
+                 submitter_email, category_ids, status, created_at`,
       params
     );
 
@@ -307,7 +331,8 @@ router.post('/:id/approve', requireRegionalAdmin, async (req, res) => {
 
     const sub = await client.query(
       `SELECT name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
-              image_data, image_mime_type, category_ids, user_id, status, region_id
+              image_data, image_mime_type, contact_email, contact_phone, hours, tags,
+              category_ids, user_id, status, region_id
        FROM submissions WHERE id = $1 FOR UPDATE`,
       [id]
     );
@@ -328,9 +353,16 @@ router.post('/:id/approve', requireRegionalAdmin, async (req, res) => {
     }
 
     const loc = await client.query(
-      `INSERT INTO locations (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url, image_data, image_mime_type, owner_id, region_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
-      [s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude, s.url, s.image_url, s.image_data, s.image_mime_type, s.user_id, s.region_id]
+      `INSERT INTO locations
+         (name, name_fr, description, description_fr, address, latitude, longitude, url, image_url,
+          image_data, image_mime_type, contact_email, contact_phone, hours, tags, owner_id, region_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       RETURNING id`,
+      [
+        s.name, s.name_fr, s.description, s.description_fr, s.address, s.latitude, s.longitude,
+        s.url, s.image_url, s.image_data, s.image_mime_type, s.contact_email, s.contact_phone,
+        s.hours, s.tags, s.user_id, s.region_id,
+      ]
     );
     const locationId = loc.rows[0].id;
 

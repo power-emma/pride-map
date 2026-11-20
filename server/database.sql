@@ -51,6 +51,11 @@ CREATE TABLE locations (
     latitude DECIMAL(10, 8),
     longitude DECIMAL(11, 8),
     url VARCHAR(255),
+    contact_email VARCHAR(255),
+    contact_phone VARCHAR(100),
+    hours JSONB,
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     image_url TEXT,
     -- Uploaded image, stored as a BLOB; takes priority over image_url when set.
     image_data BYTEA,
@@ -278,6 +283,10 @@ CREATE TABLE submissions (
     image_url TEXT,
     image_data BYTEA,
     image_mime_type VARCHAR(100),
+    contact_email VARCHAR(255),
+    contact_phone VARCHAR(100),
+    hours JSONB,
+    tags TEXT[] NOT NULL DEFAULT '{}',
     submitter_email VARCHAR(255),
     category_ids INTEGER[] NOT NULL DEFAULT '{}',
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -300,6 +309,7 @@ CREATE TABLE events (
     description_fr TEXT,
     event_date DATE NOT NULL,
     event_time TIME,
+    tags TEXT[] NOT NULL DEFAULT '{}',
     location VARCHAR(255),
     -- Optional link to the business hosting the event. Used to fall back to
     -- that business's image when the event doesn't have its own.
@@ -311,7 +321,8 @@ CREATE TABLE events (
     image_mime_type VARCHAR(100),
     -- The account that manages this event; NULL means admin-managed.
     owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Fast lookup of the upcoming-events queue shown on the map
